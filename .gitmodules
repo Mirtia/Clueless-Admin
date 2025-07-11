@@ -1,0 +1,6 @@
+[submodule "yara"]
+	path = yara
+	url = git@github.com:elastic/protections-artifacts.git
+[submodule "tools/chkrootkit"]
+	path = tools/chkrootkit
+	url = git@github.com:Magentron/chkrootkit.git
