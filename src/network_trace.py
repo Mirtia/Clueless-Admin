@@ -4,11 +4,11 @@ from pyroute2 import iptc
 import json
 
 
-def parse_proc_net(filename) -> tuple:
+def parse_proc_net(filename: str) -> tuple:
     """Parse the /proc/net/tcp or /proc/net/udp file to extract socket information.
 
     Args:
-        filename (_type_): Path to the /proc/net/tcp or /proc/net/udp file.
+        filename (str): Path to the /proc/net/tcp or /proc/net/udp file.
 
     Returns:
         tuple: A tuple containing a list of socket dictionaries and a status message.
