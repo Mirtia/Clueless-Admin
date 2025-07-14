@@ -208,3 +208,6 @@ __marimo__/
 
 # Logs (Yara rules and other)
 logs/
+
+# .VSCodeCounter
+.VSCodeCounter/

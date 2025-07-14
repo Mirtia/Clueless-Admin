@@ -1,4 +1,5 @@
 import argparse
+import asyncio
 from ebpf_monitor import *
 from file_system_monitor import *
 from ftrace_monitor import *
@@ -77,4 +78,21 @@ def main():
     )
     args = get_args()
     
-    
+    dispatcher = {
+        "use_bcc": lambda: ebpf_monitor.call(duration=args.duration, frequency=args.frequency),
+        "use_ftrace": lambda: ftrace_monitor.call(duration=args.duration, frequency=args.frequency),
+        "use_io_uring": lambda: io_uring_monitor.call(duration=args.duration, frequency=args.frequency),
+        "use_syscall_timing": lambda: syscall_table_monitor.call(duration=args.duration, frequency=args.frequency),
+        "use_networking": lambda: networking_monitor.call(duration=args.duration, frequency=args.frequency),
+        "use_process_monitor": lambda: process_monitor.call(duration=args.duration, frequency=args.frequency),
+        "use_file_system": lambda: file_system_monitor.call(duration=args.duration, frequency=args.frequency),
+        "use_modules": lambda: modules_monitor.call(duration=args.duration, frequency=args.frequency),
+    }
+
+    tasks = []
+    for arg, func in dispatcher.items():
+        if getattr(args, arg, False):
+            print(f"Starting {arg.replace('use_', '').replace('_', ' ').title()} Monitor asynchronously...")
+            tasks.append(asyncio.create_task(func()))
+
+    await asyncio.gather(*tasks)

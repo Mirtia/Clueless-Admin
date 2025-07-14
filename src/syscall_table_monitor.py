@@ -1,5 +1,5 @@
 import time
-from datetime import datetime``
+from datetime import datetime
 
 def syscall_timing_check(callable_syscall, iterations=100, *args, **kwargs):
     """
