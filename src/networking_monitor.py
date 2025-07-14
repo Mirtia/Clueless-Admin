@@ -50,8 +50,26 @@ def parse_proc_net(filename: str) -> tuple:
 def list_tcp6_sockets() -> dict:
     """List all TCP6 sockets from /proc/net/tcp6.
 
-    Returns:
-        dict: A dictionary containing the timestamp, total number of sockets, and a list of socket details.
+    Returns a JSON with the following structure:
+    {
+        "timestamp": "2025-10-01T12:00:00",
+        "data": {
+            "protocol": "tcp6",
+            "total": 10,
+            "sockets": [
+                {
+                    "local_ip": "::1",
+                    "local_port": 80,
+                    "remote_ip": "::",
+                    "remote_port": 0,
+                    "state": "01",
+                    "inode": "12345"
+                },
+                ...
+            ]
+        },
+        "message": "TCP6 sockets listed successfully."
+    }
     """
     sockets, msg = parse_proc_net("/proc/net/tcp6")
     if sockets is None:
@@ -74,8 +92,25 @@ def list_tcp6_sockets() -> dict:
 def list_udp6_sockets() -> dict:
     """List all UDP6 sockets from /proc/net/udp6.
 
-    Returns:
-        dict: A dictionary containing the timestamp, total number of sockets, and a list of socket details.
+    Returns a JSON with the following structure:
+    {
+        "timestamp": "2025-10-01T12:00:00",
+        "data": {
+            "protocol": "udp6",
+            "total": 10,
+            "sockets": [
+                {
+                    "local_ip": "::1",
+                    "local_port": 53,
+                    "remote_ip": "::",
+                    "remote_port": 0,
+                    "inode": "12345"
+                },
+                ...
+            ]
+        },
+        "message": "UDP6 sockets listed successfully."
+    }
     """
     sockets, msg = parse_proc_net("/proc/net/udp6")
     if sockets is None:
@@ -98,8 +133,16 @@ def list_udp6_sockets() -> dict:
 def list_tcp_sockets() -> dict:
     """List all TCP sockets from /proc/net/tcp.
 
-    Returns:
-        dict: A dictionary containing the timestamp, total number of sockets, and a list of socket details.
+    Returns a JSON with the following structure:
+    {
+        "timestamp": "2025-10-01T12:00:00",
+        "data": {
+            "protocol": "tcp",
+            "total": 10,
+            "sockets": []
+        },
+        "message": "TCP sockets listed successfully."
+    }
     """
     sockets, msg = parse_proc_net("/proc/net/tcp")
     if sockets is None:
@@ -122,8 +165,16 @@ def list_tcp_sockets() -> dict:
 def list_udp_sockets() -> dict:
     """List all UDP sockets from /proc/net/udp.
 
-    Returns:
-        dict: A dictionary containing the timestamp, total number of sockets, and a list of socket details.
+    Returns a JSON with the following structure:
+    {
+        "timestamp": "2025-10-01T12:00:00",
+        "data": {
+            "protocol": "udp",
+            "total": 10,
+            "sockets": []
+        },
+        "message": "UDP sockets listed successfully."
+    }
     """
     sockets, msg = parse_proc_net("/proc/net/udp")
     if sockets is None:
@@ -146,8 +197,22 @@ def list_udp_sockets() -> dict:
 def list_network_interfaces() -> dict:
     """List all network interfaces and their statistics from /sys/class/net/.
 
-    Returns:
-        dict: A dictionary containing the timestamp, total number of interfaces, and a list of interface details.
+    Returns a JSON with the following structure:
+    {
+        "timestamp": "2025-10-01T12:00:00",
+        "data": {
+            "total_interfaces": 5,
+            "interfaces": [
+                {
+                    "name": "eth0",
+                    "rx_bytes": 12345678,
+                    "tx_bytes": 87654321
+                },
+                ...
+            ]
+        },
+        "message": "Network interfaces listed successfully."
+    }
     """
     interfaces = []
     try:
@@ -192,8 +257,36 @@ def list_network_interfaces() -> dict:
 def list_iptables_filter_table(indent=2) -> dict:
     """List all iptables rules in the filter table.
 
-    Returns:
-        dict: A JSON string containing the timestamp, a list of chains with their rules, and a message.
+    Returns a JSON with the following structure:
+    {
+        "timestamp": "<ISO8601_TIMESTAMP>",
+        "data": {
+            "chains": [
+                {
+                    "name": "<CHAIN_NAME>",
+                    "policy": "<CHAIN_POLICY or null>",
+                    "rules": [
+                        {
+                            "src": "<SOURCE_CIDR>",
+                            "dst": "<DESTINATION_CIDR>",
+                            "protocol": "<PROTOCOL>",
+                            "in_interface": "<IN_INTERFACE>",
+                            "out_interface": "<OUT_INTERFACE>",
+                            "target": "<TARGET_NAME or null>",
+                            "matches": [
+                                "<MATCH1_NAME>",
+                                "<MATCH2_NAME>",
+                                ...
+                            ]
+                        },
+                        ...
+                    ]
+                },
+                ...
+            ]
+        },
+        "message": "<STATUS_MESSAGE>"
+    }
     """
     # It requires root privileges to access iptables rules.
     if os.geteuid() != 0:
@@ -238,8 +331,26 @@ def list_iptables_filter_table(indent=2) -> dict:
 def list_unix_sockets() -> dict:
     """List all Unix domain sockets from /proc/net/unix.
 
-    Returns:
-        dict: A dictionary containing the timestamp, total number of sockets, and a list of socket details.
+    Returns a JSON with the following structure:
+    {
+        "timestamp": "2025-10-01T12:00:00",
+        "data": {
+            "total": 10,
+            "sockets": [
+                {
+                    "num": "12345",
+                    "ref_count": "1",
+                    "protocol": "00000000",
+                    "flags": "0x0",
+                    "type": "DGRAM",
+                    "state": "01",
+                    "path": "/var/run/socket"
+                },
+                ...
+            ]
+        },
+        "message": "Unix sockets listed successfully."
+    }
     """
     try:
         with open("/proc/net/unix", "r") as f:
@@ -276,10 +387,28 @@ def list_unix_sockets() -> dict:
 
 
 def list_arp_table() -> dict:
-    """List all ARP table entries from /proc/net/arp.
+    """Lists all entries from the ARP table as found in /proc/net/arp and returns them in a structured JSON format.
 
     Returns:
-        dict: A dictionary containing the timestamp, total number of entries, and a list of ARP entries.
+        dict: A dictionary with the following structure:
+            {
+                "timestamp": "<ISO8601_TIMESTAMP>",
+                "data": {
+                    "total": <INTEGER_TOTAL_ENTRIES>,
+                    "arp_entries": [
+                        {
+                            "ip_address": "<IPV4_ADDRESS>",
+                            "hw_type": "<HARDWARE_TYPE_CODE>",
+                            "flags": "<ARP_FLAGS>",
+                            "mac_address": "<MAC_ADDRESS>",
+                            "mask": "<SUBNET_MASK>",
+                            "device": "<INTERFACE_NAME>"
+                        },
+                        ...
+                    ]
+                },
+                "message": "<STATUS_MESSAGE>"
+            }
     """
     try:
         with open("/proc/net/arp", "r") as f:

@@ -1,12 +1,4 @@
-import argparse
-from ebpf_monitor import *
-from file_system_monitor import *
-from ftrace_monitor import *
-from io_uring_monitor import *
-from modules_monitor import *
-from networking_monitor import *
-from process_monitor import *
-from syscall_table_monitor import *
+import argparse    
 
 def get_args(): 
   parser = argparse.ArgumentParser(description="Clueless Admin monitoring tool.")
@@ -64,17 +56,3 @@ def get_args():
   )
   args = parser.parse_args()
   return args
-
-
-def main():
-    print(
-        " _____ _            _                  ___      _           _       "
-        "/  __ \ |          | |                / _ \    | |         (_)      "
-        "| /  \/ |_   _  ___| | ___  ___ ___  / /_\ \ __| |_ __ ___  _ _ __  "
-        "| |   | | | | |/ _ \ |/ _ \/ __/ __| |  _  |/ _` | '_ ` _ \| | '_ \ "
-        "| \__/\ | |_| |  __/ |  __/\__ \__ \ | | | | (_| | | | | | | | | | |"
-        " \____/_|\__,_|\___|_|\___||___/___/ \_| |_/\__,_|_| |_| |_|_|_| |_|"
-    )
-    args = get_args()
-    
-    

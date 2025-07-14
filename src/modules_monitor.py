@@ -1,10 +1,11 @@
 import os
 from datetime import datetime
 
-def list_loaded_modules() -> dict:
+def monitor_loaded_modules() -> dict:
     """
     List all loaded modules in the system (lsmod or /proc/modules).
-    Returns a json with the following structure:
+    
+    Returns a JSON with the following structure:
     {
         "timestamp": "2025-10-01T12:00:00",
         "data": {
@@ -116,6 +117,49 @@ def list_all_modules() -> dict:
                 "modules": modules,
             },
             "message": "All modules listed successfully.",
+        }
+    except Exception as e:
+        return {"timestamp": datetime.now().isoformat(), "data": {}, "error": str(e)}
+
+
+def list_kernel_symbols():
+    """List kernel symbols (kallsyms).
+    Returns a json with the following structure:
+    {
+        "timestamp": "2025-10-01T12:00:00",
+        "data": {
+            "symbols": [
+                {
+                    "address": "0xffffffff81000000",
+                    "name": "do_syscall_64",
+                    "type": "function"
+                },
+                ...
+            ]
+        },
+        "message": "Kernel symbols listed successfully."
+    }
+    """
+    try:
+        symbols = []
+        with open("/proc/kallsyms", "r") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 3:
+                    address = parts[0]
+                    symbol_type = parts[1]
+                    name = " ".join(parts[2:])
+                    symbols.append({
+                        "address": address,
+                        "name": name,
+                        "type": symbol_type
+                    })
+        return {
+            "timestamp": datetime.now().isoformat(),
+            "data": {
+                "symbols": symbols
+            },
+            "message": "Kernel symbols listed successfully."
         }
     except Exception as e:
         return {"timestamp": datetime.now().isoformat(), "data": {}, "error": str(e)}
