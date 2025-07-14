@@ -38,5 +38,4 @@ mkdir -p ../../logs/chkrootkit/ && sudo chkrootkit -x &> ../../logs/chkrootkit/c
 
 ## Volatility 
 
-
 [Volatility plugins](https://github.com/volatilityfoundation/volatility3/tree/develop/volatility3/framework/plugins/linux)
