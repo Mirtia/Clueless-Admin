@@ -4,7 +4,6 @@ import subprocess
 import time
 from datetime import datetime
 from typing import Any, Dict
-from bcc import BPF
 
 def call(
     bcc_enabled: bool = False,
