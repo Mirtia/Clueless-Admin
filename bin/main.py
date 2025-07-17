@@ -8,14 +8,14 @@ sys.path.insert(
     0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src"))
 )
 
-from clueless_admin.ebpf_monitor import *
-from clueless_admin.file_system_monitor import *
-from clueless_admin.ftrace_monitor import *
-from clueless_admin.io_uring_monitor import *
-from clueless_admin.modules_monitor import *
-from clueless_admin.networking_monitor import *
-from clueless_admin.process_monitor import *
-from clueless_admin.syscall_table_monitor import *
+import clueless_admin.ebpf_monitor as ebpf_monitor
+import clueless_admin.file_system_monitor as file_system_monitor
+import clueless_admin.ftrace_monitor as ftrace_monitor
+import clueless_admin.io_uring_monitor as io_uring_monitor
+import clueless_admin.modules_monitor as modules_monitor
+import clueless_admin.networking_monitor as networking_monitor
+import clueless_admin.process_monitor as process_monitor
+import clueless_admin.syscall_table_monitor as syscall_table_monitor
 
 
 def get_args():
@@ -24,7 +24,7 @@ def get_args():
     parser.add_argument(
         "--duration",
         type=int,
-        default=60,
+        default=10,
         help="Duration in seconds for each monitoring task (default: 60 seconds)",
     )
     parser.add_argument(

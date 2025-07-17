@@ -1,0 +1,5 @@
+{
+  "timestamp": "2025-07-17T16:41:18.237471",
+  "data": {},
+  "message": "Error enumerating eBPF programs via BCC: cannot use a string pattern on a bytes-like object"
+}
