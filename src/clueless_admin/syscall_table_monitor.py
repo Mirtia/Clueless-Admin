@@ -1,6 +1,10 @@
 import time
 from datetime import datetime
 
+def call(callable_syscall, duration, frequency):
+    # For now ignore this module.
+    raise NotImplementedError
+
 def syscall_timing_check(callable_syscall, iterations=100, *args, **kwargs):
     """
     Measures execution time (ns) of a syscall-like Python function.

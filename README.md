@@ -39,3 +39,8 @@ mkdir -p ../../logs/chkrootkit/ && sudo chkrootkit -x &> ../../logs/chkrootkit/c
 ## Volatility 
 
 [Volatility plugins](https://github.com/volatilityfoundation/volatility3/tree/develop/volatility3/framework/plugins/linux)
+
+
+## Additional required packages
+
+<!-- sudo dnf install bcc bcc-devel python3-bcc -->

@@ -1,6 +1,65 @@
 import os
 from datetime import datetime
 
+import os
+import time
+import json
+from datetime import datetime
+from typing import Optional, Iterable
+
+
+def call(
+    directories: Optional[Iterable[str]],
+    duration: int,
+    frequency: int,
+    output_dir: str = "../../data/output",
+):
+    """
+    Periodically runs all monitor functions and saves their outputs
+    in a per-run subdirectory under output_dir, with the run directory named by the root timestamp.
+    Each file is named <monitor>_<timestamp>_<iteration>.json for traceability.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    num_calls = int(duration // frequency)
+    if duration % frequency != 0:
+        num_calls += 1
+
+    root_timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(output_dir, f"file_system_monitor_{root_timestamp}")
+    os.makedirs(run_dir, exist_ok=True)
+
+    start_time = time.time()
+    for i in range(num_calls):
+        elapsed = time.time() - start_time
+        if elapsed > duration:
+            break
+
+        monitors = {
+            "file_descriptors": monitor_file_descriptors(),
+            "inodes": monitor_inodes(),
+            "known_directories": monitor_known_directories(
+                known_directories=directories, has_input_file=False
+            ),
+            "file_systems": monitor_file_systems(),
+        }
+
+        # Iteration count: i+1 (or i if you want zero-based)
+        iteration = i
+        for monitor_name, result in monitors.items():
+            filename = f"{monitor_name}_{root_timestamp}_{iteration}.json"
+            filepath = os.path.join(run_dir, filename)
+            try:
+                with open(filepath, "w") as f:
+                    json.dump(result, f, indent=2)
+            except Exception as e:
+                print(f"Failed to write {filepath}: {e}")
+
+        # Sleep until the next interval
+        time_to_next = frequency - ((time.time() - start_time) % frequency)
+        if time_to_next > 0:
+            time.sleep(min(time_to_next, max(0, duration - (time.time() - start_time))))
+
+
 def monitor_file_descriptors():
     """
     Monitor file descriptors in the system.
@@ -126,43 +185,61 @@ def monitor_inodes():
         }
 
 
-def monitor_known_directories(directories: list = {"/etc", "/sys", "/tmp"}):
+def monitor_known_directories(
+    known_directories_file: Optional[str] = None,
+    has_input_file: bool = False,
+    known_directories: Optional[Iterable[str]] = None,
+) -> dict:
     """
     Monitor known directories in the system.
 
-    Reads the specified directories to gather information about their contents.
+    Args:
+        known_directories_file (str, optional): Path to file containing directory paths to monitor.
+        has_input_file (bool): If True, use directories listed in known_directories_file.
+        known_directories (Iterable[str], optional): List or set of directories to monitor if not using input file.
 
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "directories": [
-                {
-                    "path": "/etc",
-                    "contents": ["file1.conf", "file2.conf", ...]
-                },
-                ...
-            ]
-        },
-        "message": "Known directories monitored successfully."
-    }
+    Returns:
+        dict: JSON-like dict containing timestamp, directory contents, and status message.
     """
     try:
+        if has_input_file:
+            if not known_directories_file or not os.path.isfile(known_directories_file):
+                raise ValueError(
+                    "known_directories_file must be a valid path if has_input_file is True."
+                )
+            with open(known_directories_file, "r") as f:
+                directories = [line.strip() for line in f if line.strip()]
+        else:
+            if known_directories is None:
+                raise ValueError(
+                    "known_directories must be provided if has_input_file is False."
+                )
+            directories = list(known_directories)
+
         directories_info = []
         for directory in directories:
-            if os.path.exists(directory):
-                contents = os.listdir(directory)
+            if os.path.exists(directory) and os.path.isdir(directory):
+                try:
+                    contents = os.listdir(directory)
+                except Exception as e:
+                    contents = [f"Error reading directory: {str(e)}"]
                 directories_info.append({"path": directory, "contents": contents})
+            else:
+                directories_info.append(
+                    {
+                        "path": directory,
+                        "contents": ["Directory does not exist or is not a directory."],
+                    }
+                )
 
         return {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.utcnow().isoformat() + "Z",
             "data": {"directories": directories_info},
             "message": "Known directories monitored successfully.",
         }
-
     except Exception as e:
         return {
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": datetime.utcnow().isoformat() + "Z",
             "data": {},
             "message": f"Error monitoring known directories: {str(e)}",
         }

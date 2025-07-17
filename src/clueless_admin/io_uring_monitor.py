@@ -1,6 +1,64 @@
 import os
 from datetime import datetime
 
+import os
+import time
+import json
+from datetime import datetime
+
+
+def call(
+    duration: int, frequency: int, output_dir: str = "./io_uring_output"
+):
+    """
+    Calls monitor_io_uring() every 'frequency' seconds for 'duration' seconds,
+    and saves the return value as JSON to:
+    output_dir / io_uring_monitor_<timestamp> / monitor_io_uring_<timestamp>_<iteration>.json
+
+    Parameters:
+        duration (int or float): Total duration of calls in seconds.
+        frequency (int or float): Interval between calls in seconds.
+        output_dir (str): Base directory to save the JSON results.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    num_calls = int(duration // frequency)
+    if duration % frequency != 0:
+        num_calls += 1
+
+    root_timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(output_dir, f"io_uring_monitor_{root_timestamp}")
+    os.makedirs(run_dir, exist_ok=True)
+
+    start_time = time.time()
+    for i in range(num_calls):
+        elapsed = time.time() - start_time
+        if elapsed > duration:
+            break
+
+        try:
+            result = monitor_io_uring()
+        except Exception as e:
+            result = {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "data": {},
+                "message": f"Error during monitor_io_uring: {str(e)}",
+            }
+
+        iteration = i
+        filename = f"monitor_io_uring_{root_timestamp}_{iteration}.json"
+        filepath = os.path.join(run_dir, filename)
+        try:
+            with open(filepath, "w") as f:
+                json.dump(result, f, indent=2)
+        except Exception as e:
+            print(f"Failed to write {filepath}: {e}")
+
+        # Sleep until the next scheduled time
+        time_to_next = frequency - ((time.time() - start_time) % frequency)
+        if time_to_next > 0:
+            time.sleep(min(time_to_next, max(0, duration - (time.time() - start_time))))
+
+
 def monitor_io_uring():
     """
     Monitor io_uring usage in the system.
@@ -66,7 +124,7 @@ def monitor_io_uring():
 
 
 # == Notes ==
-# 0 syscalls is of course not possible, but the idea is to prove that the rootkit is not using any syscalls that are related to the attack, 
+# 0 syscalls is of course not possible, but the idea is to prove that the rootkit is not using any syscalls that are related to the attack,
 # only the io_uring syscalls are used.
 # Once you place one or more SQEs on to the SQ, you need to
 # let the kernel know that you've done so. You can do this
@@ -74,4 +132,3 @@ def monitor_io_uring():
 # https://man7.org/linux/man-pages/man7/io_uring.7.html
 # Known rootkit will use this method with the only visible syscalls being the io_uring.
 # Some known modules that use the io_uring is qemu and nginx.
-

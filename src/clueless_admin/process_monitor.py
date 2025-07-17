@@ -1,6 +1,12 @@
 import datetime
 import os
 
+def call(duration, frequency):
+    # Top level call
+    # Seconds and frequency
+    monitor_loaded_ebpf()
+    pass
+
 def monitor_process():
     """
     Monitor process information in the system.

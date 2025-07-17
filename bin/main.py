@@ -20,6 +20,7 @@ from clueless_admin.syscall_table_monitor import *
 
 def get_args():
     parser = argparse.ArgumentParser(description="Clueless Admin monitoring tool.")
+    # Generic arguments
     parser.add_argument(
         "--duration",
         type=int,
@@ -33,90 +34,125 @@ def get_args():
         help="Frequency in seconds to run each monitoring task (default: 1 second)",
     )
     parser.add_argument(
-        "--use_bcc",
-        action="store_true",
-        help="Use BCC for eBPF monitoring (default: False)",
+        "--output-dir",
+        type=str,
+        default="../data/output",
+        help="The output directory of the generated JSON responses by the monitoring.",
     )
+    # Flag arguments (which monitoring methods are enabled) + method specific arguments (secondary)
+    # The module specific arguments are optional, they have default values set.
     parser.add_argument(
-        "--use_ftrace",
+        "--ebpf",
+        action="store_true",
+        help="Enable eBPF monitoring.",
+    )
+    # Module specific
+    parser.add_argument(
+        "--bcc-enabled",
+        action="store_true",
+        help="Use BCC for enabled eBPF monitoring (default: False)",
+    )
+
+    parser.add_argument(
+        "--ftrace",
         action="store_true",
         help="Use ftrace for monitoring (default: False)",
     )
+    # Module specific
     parser.add_argument(
-        "--use_io_uring",
+        "--max-trace-lines",
+        action="store_true",
+        help="Maximum lines to include from trace file.",
+    )
+
+    parser.add_argument(
+        "--io-uring",
         action="store_true",
         help="Use io_uring for monitoring (default: False)",
     )
+
     parser.add_argument(
-        "--use_syscall_timing",
-        action="store_true",
-        help="Enable syscall timing checks (default: False)",
-    )
-    parser.add_argument(
-        "--use_networking",
+        "--networking",
         action="store_true",
         help="Enable networking monitoring (default: False)",
     )
+
     parser.add_argument(
-        "--use_process_monitor",
+        "--process",
         action="store_true",
         help="Enable process monitoring (default: False)",
     )
+
     parser.add_argument(
-        "--use_file_system",
+        "--file-system",
         action="store_true",
         help="Enable file system monitoring (default: False)",
     )
+    # Module specific
     parser.add_argument(
-        "--use_modules",
+        "--known-directories",
+        action="store_true",
+        help="Provide a file (.txt file with one column) with directories to monitor.",
+    )
+
+    parser.add_argument(
+        "--modules",
         action="store_true",
         help="Enable kernel modules monitoring (default: False)",
     )
+
     args = parser.parse_args()
     return args
 
 
-def main():
+async def main():
     print(
-        " _____ _            _                  ___      _           _       "
-        "/  __ \ |          | |                / _ \    | |         (_)      "
-        "| /  \/ |_   _  ___| | ___  ___ ___  / /_\ \ __| |_ __ ___  _ _ __  "
-        "| |   | | | | |/ _ \ |/ _ \/ __/ __| |  _  |/ _` | '_ ` _ \| | '_ \ "
-        "| \__/\ | |_| |  __/ |  __/\__ \__ \ | | | | (_| | | | | | | | | | |"
-        " \____/_|\__,_|\___|_|\___||___/___/ \_| |_/\__,_|_| |_| |_|_|_| |_|"
+        r" _____ _            _                  ___      _           _       ",
+        r"/  __ \ |          | |                / _ \    | |         (_)      ",
+        r"| /  \/ |_   _  ___| | ___  ___ ___  / /_\ \ __| |_ __ ___  _ _ __  ",
+        r"| |   | | | | |/ _ \ |/ _ \/ __/ __| |  _  |/ _` | '_ ` _ \| | '_ \ ",
+        r"| \__/\ | |_| |  __/ |  __/\__ \__ \ | | | | (_| | | | | | | | | | |",
+        r" \____/_|\__,_|\___|_|\___||___/___/ \_| |_/\__,_|_| |_| |_|_|_| |_|",
     )
-    args = get_args()
 
-    # TODO: Add the arguments needed
-    # TODO: Make async calls with call as top level function
-    # Add logger 
+    args = get_args()
+    # TODO: Add logger
     dispatcher = {
-        "use_bcc": lambda: ebpf_monitor.call(
-            duration=args.duration, frequency=args.frequency
+        "ebpf": lambda: ebpf_monitor.call(
+            bcc_enabled=args.bcc_enabled,
+            duration=args.duration,
+            frequency=args.frequency,
+            output_dir=args.output_dir,
         ),
-        "use_ftrace": lambda: ftrace_monitor.call(
-            duration=args.duration, frequency=args.frequency
+        "ftrace": lambda: ftrace_monitor.call(
+            max_trace_lines=args.max_trace_lines,
+            duration=args.duration,
+            frequency=args.frequency,
+            output_dir=args.output_dir,
         ),
-        "use_io_uring": lambda: io_uring_monitor.call(
-            duration=args.duration, frequency=args.frequency
+        "io_uring": lambda: io_uring_monitor.call(
+            duration=args.duration,
+            frequency=args.frequency,
+            output_dir=args.output_dir,
         ),
-        "use_syscall_timing": lambda: syscall_table_monitor.call(
-            duration=args.duration, frequency=args.frequency
+        "networking": lambda: networking_monitor.call(
+            duration=args.duration, output_dir=args.output_dir, frequency=args.frequency
         ),
-        "use_networking": lambda: networking_monitor.call(
-            duration=args.duration, frequency=args.frequency
+        "process": lambda: process_monitor.call(
+            duration=args.duration, frequency=args.frequency, output_dir=args.output_dir
         ),
-        "use_process_monitor": lambda: process_monitor.call(
-            duration=args.duration, frequency=args.frequency
+        "file_system": lambda: file_system_monitor.call(
+            known_directories_file=(
+                args.known_directories if args.known_directories else None
+            ),
+            duration=args.duration,
+            frequency=args.frequency,
+            output_dir=args.output_dir,
         ),
-        "use_file_system": lambda: file_system_monitor.call(
-            duration=args.duration, frequency=args.frequency
-        ),
-        "use_modules": lambda: modules_monitor.call(
-            duration=args.duration, frequency=args.frequency
+        "modules": lambda: modules_monitor.call(
+            duration=args.duration, frequency=args.frequency, output_dir=args.output_dir
         ),
     }
-
     tasks = []
     for arg, func in dispatcher.items():
         if getattr(args, arg, False):

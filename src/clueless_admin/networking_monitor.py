@@ -1,7 +1,58 @@
-from datetime import datetime
-import os
-from pyroute2 import iptc
 import json
+import os
+from datetime import datetime
+
+import iptc
+
+
+def call(duration: int, frequency: int, output_dir: str = "./net_output"):
+    """
+    Periodically runs all network monitor functions and saves each output as:
+    output_dir/net_monitor_<timestamp>/<monitor_name>_<timestamp>_<iteration>.json
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    num_calls = int(duration // frequency)
+    if duration % frequency != 0:
+        num_calls += 1
+
+    root_timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(output_dir, f"net_monitor_{root_timestamp}")
+    os.makedirs(run_dir, exist_ok=True)
+
+    start_time = time.time()
+    for i in range(num_calls):
+        elapsed = time.time() - start_time
+        if elapsed > duration:
+            break
+
+        monitors = {
+            "list_tcp6_sockets": list_tcp6_sockets(),
+            "list_udp6_sockets": list_udp6_sockets(),
+            "list_tcp_sockets": list_tcp_sockets(),
+            "list_udp_sockets": list_udp_sockets(),
+            "list_network_interfaces": list_network_interfaces(),
+            "list_iptables_filter_table": list_iptables_filter_table(),
+            "list_unix_sockets": list_unix_sockets(),
+            "list_arp_table": list_arp_table(),
+        }
+
+        iteration = i
+        for monitor_name, result in monitors.items():
+            filename = f"{monitor_name}_{root_timestamp}_{iteration}.json"
+            filepath = os.path.join(run_dir, filename)
+            try:
+                # list_iptables_filter_table might return a string
+                if isinstance(result, str):
+                    result = json.loads(result)
+                with open(filepath, "w") as f:
+                    json.dump(result, f, indent=2)
+            except Exception as e:
+                print(f"Failed to write {filepath}: {e}")
+
+        # Sleep until next scheduled time
+        time_to_next = frequency - ((time.time() - start_time) % frequency)
+        if time_to_next > 0:
+            time.sleep(min(time_to_next, max(0, duration - (time.time() - start_time))))
 
 
 def parse_proc_net(filename: str) -> tuple:
@@ -254,7 +305,7 @@ def list_network_interfaces() -> dict:
         }
 
 
-def list_iptables_filter_table(indent=2) -> dict:
+def list_iptables_filter_table() -> dict:
     """List all iptables rules in the filter table.
 
     Returns a JSON with the following structure:
@@ -325,7 +376,7 @@ def list_iptables_filter_table(indent=2) -> dict:
         result["message"] = "Filter table iptables rules retrieved successfully."
     except Exception as e:
         result["message"] = f"Error: {e}"
-    return json.dumps(result, indent=indent)
+    return json.dumps(result, indent=2)
 
 
 def list_unix_sockets() -> dict:

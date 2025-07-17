@@ -1,10 +1,64 @@
 import os
+import time
+import json
 from datetime import datetime
+
+
+def call(
+    use_bcc: bool, duration: int, frequency: int, output_dir: str = "./modules_output"
+):
+    """
+    Calls module monitors every 'frequency' seconds for 'duration' seconds,
+    and saves each monitor's return value as JSON to:
+    output_dir / modules_monitor_<timestamp> / <monitor>_<timestamp>_<iteration>.json
+
+    Parameters:
+        use_bcc (bool): Placeholder for consistency.
+        duration (int or float): Total duration of calls in seconds.
+        frequency (int or float): Interval between calls in seconds.
+        output_dir (str): Base directory to save the JSON results.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    num_calls = int(duration // frequency)
+    if duration % frequency != 0:
+        num_calls += 1
+
+    root_timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(output_dir, f"modules_monitor_{root_timestamp}")
+    os.makedirs(run_dir, exist_ok=True)
+
+    start_time = time.time()
+    for i in range(num_calls):
+        elapsed = time.time() - start_time
+        if elapsed > duration:
+            break
+
+        monitors = {
+            "monitor_loaded_modules": monitor_loaded_modules(),
+            "monitor_all_loaded_modules": monitor_all_loaded_modules(),
+            "list_kernel_symbols": list_kernel_symbols(),
+        }
+
+        iteration = i
+        for monitor_name, result in monitors.items():
+            filename = f"{monitor_name}_{root_timestamp}_{iteration}.json"
+            filepath = os.path.join(run_dir, filename)
+            try:
+                with open(filepath, "w") as f:
+                    json.dump(result, f, indent=2)
+            except Exception as e:
+                print(f"Failed to write {filepath}: {e}")
+
+        # Sleep until the next scheduled time
+        time_to_next = frequency - ((time.time() - start_time) % frequency)
+        if time_to_next > 0:
+            time.sleep(min(time_to_next, max(0, duration - (time.time() - start_time))))
+
 
 def monitor_loaded_modules() -> dict:
     """
     List all loaded modules in the system (lsmod or /proc/modules).
-    
+
     Returns a JSON with the following structure:
     {
         "timestamp": "2025-10-01T12:00:00",
@@ -66,7 +120,7 @@ def monitor_loaded_modules() -> dict:
         return {"timestamp": datetime.now().isoformat(), "data": {}, "message": str(e)}
 
 
-def list_all_modules() -> dict:
+def monitor_all_loaded_modules() -> dict:
     """
     List all modules in the system, loaded or built (ls /sys/module/).
     Returns a json with the following structure:
@@ -149,17 +203,13 @@ def list_kernel_symbols():
                     address = parts[0]
                     symbol_type = parts[1]
                     name = " ".join(parts[2:])
-                    symbols.append({
-                        "address": address,
-                        "name": name,
-                        "type": symbol_type
-                    })
+                    symbols.append(
+                        {"address": address, "name": name, "type": symbol_type}
+                    )
         return {
             "timestamp": datetime.now().isoformat(),
-            "data": {
-                "symbols": symbols
-            },
-            "message": "Kernel symbols listed successfully."
+            "data": {"symbols": symbols},
+            "message": "Kernel symbols listed successfully.",
         }
     except Exception as e:
         return {"timestamp": datetime.now().isoformat(), "data": {}, "error": str(e)}

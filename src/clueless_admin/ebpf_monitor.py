@@ -1,22 +1,71 @@
+import json
+import os
 import subprocess
+import time
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 from bcc import BPF
-from bcc import BPF_NO_PRELOAD
-from bcc import BPFModule
-from bcc import BPFPerfEvent
-from bcc import BPFPerfEventArray
-from bcc import BPFPerfEventMap
-from bcc import BPFMap
-from bcc import BPFProgram
-from bcc import BPFTable
-from bcc import BPFTrace
+
+def call(
+    bcc_enabled: bool = False,
+    duration: int = 10,
+    frequency: int = 1,
+    output_dir: str = "../../data/output",
+):
+    """
+    Calls monitor_loaded_ebpf() every 'frequency' seconds for 'duration' seconds,
+    and saves the return value as JSON to:
+    output_dir / ebpf_monitor_<timestamp> / monitor_loaded_ebpf_<timestamp>_<iteration>.json
+
+    Parameters:
+        bcc_enabled (bool): Argument to be passed to monitor_loaded_ebpf()
+        duration (int or float): Total duration of calls in seconds
+        frequency (int or float): Interval between calls in seconds
+        output_dir (str): Base directory to save the JSON results
+    """
+    num_calls = int(duration // frequency)
+    if duration % frequency != 0:
+        num_calls += 1
+
+    root_timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    run_dir = os.path.join(output_dir, f"ebpf_monitor_{root_timestamp}")
+    os.makedirs(run_dir, exist_ok=True)
+
+    start_time = time.time()
+    for i in range(num_calls):
+        elapsed = time.time() - start_time
+        if elapsed > duration:
+            break
+
+        try:
+            result = monitor_loaded_ebpf(bcc_enabled)
+        except Exception as e:
+            result = {
+                "timestamp": datetime.utcnow().isoformat() + "Z",
+                "data": {},
+                "message": f"Error during monitor_loaded_ebpf: {str(e)}",
+            }
+
+        iteration = i
+        filename = f"monitor_loaded_ebpf_{root_timestamp}_{iteration}.json"
+        filepath = os.path.join(run_dir, filename)
+
+        try:
+            with open(filepath, "w") as f:
+                json.dump(result, f, indent=2, default=str)
+        except Exception as e:
+            print(f"Failed to write {filepath}: {e}")
+
+        # Sleep until the next scheduled time
+        time_to_next = frequency - ((time.time() - start_time) % frequency)
+        if time_to_next > 0:
+            time.sleep(min(time_to_next, max(0, duration - (time.time() - start_time))))
 
 
-def monitor_loaded_ebpf(use_bcc: bool = False) -> Dict[str, Any]:
+def monitor_loaded_ebpf(bcc_enabled: bool = False) -> Dict[str, Any]:
     """
     Enumerates loaded eBPF programs via bpffs (/sys/fs/bpf/) or introspection (bpftool prog list).
-    Optionally uses BCC if available and use_bcc is True.
+    Optionally uses BCC if available and bcc_enabled is True.
 
     Returns a JSON with the following structure:
     {
@@ -30,8 +79,8 @@ def monitor_loaded_ebpf(use_bcc: bool = False) -> Dict[str, Any]:
     """
     timestamp = datetime.now().isoformat()
     data = {"loaded_programs": [], "attachment_points": {}}
-    # Try bpftool first unless use_bcc is True
-    if not use_bcc:
+    # Try bpftool first unless bcc_enabled is True
+    if not bcc_enabled:
         try:
             # Try to enumerate loaded programs using bpftool
             bpf_tool_output = subprocess.check_output(
@@ -84,7 +133,7 @@ def monitor_loaded_ebpf(use_bcc: bool = False) -> Dict[str, Any]:
         loaded.extend([{"type": "kprobe", "name": fn} for fn in kprobes])
         if kprobes:
             attachment_points["kprobe"] = list(kprobes)
-            
+
         data["loaded_programs"] = loaded
         data["attachment_points"] = attachment_points
         return {
