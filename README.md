@@ -30,7 +30,7 @@ To use [chkrootkit](tools/chkrootkit/), build it with `make`. It requires `glibc
 
 To run:
 ```bash
-Lsudo chkrootkit
+sudo chkrootkit
 # Recommending expert mode:
 mkdir -p ../../logs/chkrootkit/ && sudo chkrootkit -x &> ../../logs/chkrootkit/chkrootkit.logs 
 ```
@@ -48,13 +48,19 @@ For ebpf monitoring with bcc, the following system packages are required:
 sudo dnf install bcc bcc-devel python3-bcc 
 ```
 
+**Warning**: Make sure that the python version defined by `uv` matches the python version of your system as uv venv creation was performed using `--system-site-packages`. 
+
 ## Running clueless admin
 
 Examples:
 
-
 ```sh
-# Monitor networking
-
 ```
+
+## Debugging
+
+First, run the script in `bin/debug.sh` providing command line arugments. The script runs the module with sudo privileges as some files require root access to be read. Run with your own responsibility.
+Then, attach to `.vscode` debugger and have fun debugging.
+
+
 
