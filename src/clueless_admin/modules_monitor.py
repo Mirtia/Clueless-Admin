@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 
 
-def call(
+async def call(
     use_bcc: bool, duration: int, frequency: int, output_dir: str = "../../data/output"
 ):
     """

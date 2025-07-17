@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 
-def call(
+async def call(
     bcc_enabled: bool = False,
     duration: int = 10,
     frequency: int = 1,

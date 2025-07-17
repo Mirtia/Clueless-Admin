@@ -162,7 +162,8 @@ async def main():
             tasks.append(asyncio.create_task(func()))
 
     await asyncio.gather(*tasks)
-
+    
+    print("Ending Process Monitor...")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 
 
-def call(duration: int, frequency: int, output_dir: str = "../../data/output"):
+async def call(duration: int, frequency: int, output_dir: str = "../../data/output"):
     """
     Calls monitor_io_uring() every 'frequency' seconds for 'duration' seconds,
     and saves the return value as JSON to:

@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Iterable, Optional
 
 
-def call(
+async def call(
     directories: Optional[Iterable[str]],
     duration: int,
     frequency: int,

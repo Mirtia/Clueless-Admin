@@ -211,3 +211,6 @@ logs/
 
 # .VSCodeCounter
 .VSCodeCounter/
+
+# Data
+data/output/
