@@ -9,7 +9,7 @@ async def call(
     directories: Optional[Iterable[str]],
     duration: int,
     frequency: int,
-    output_dir: str = "../data/output",
+    output_dir: str = "data/output",
 ):
     """
     Periodically runs all monitor functions and saves their outputs

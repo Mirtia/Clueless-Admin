@@ -10,7 +10,7 @@ async def call(
     bcc_enabled: bool = False,
     duration: int = 10,
     frequency: int = 1,
-    output_dir: str = "../data/output",
+    output_dir: str = "data/output",
 ):
     """
     Calls monitor_loaded_ebpf() every 'frequency' seconds for 'duration' seconds,

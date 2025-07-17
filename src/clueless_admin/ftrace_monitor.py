@@ -6,7 +6,7 @@ from datetime import datetime
 TRACING_DIR = "/sys/kernel/debug/tracing"
 
 
-async def call(duration: int, frequency: int, output_dir: str = "../data/output"):
+async def call(duration: int, frequency: int, output_dir: str = "data/output"):
     """
     Calls monitor_ftrace() every 'frequency' seconds for 'duration' seconds,
     and saves the return value as JSON to:

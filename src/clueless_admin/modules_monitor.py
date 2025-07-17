@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 async def call(
-    duration: int, frequency: int, output_dir: str = "../data/output"
+    duration: int, frequency: int, output_dir: str = "data/output"
 ):
     """
     Calls module monitors every 'frequency' seconds for 'duration' seconds,
@@ -42,9 +42,6 @@ async def call(
         for monitor_name, result in monitors.items():
             filename = f"{monitor_name}_{root_timestamp}_{iteration}.json"
             filepath = os.path.join(run_dir, filename)
-            print("=======")
-            print(filepath)
-            print("=======")
             try:
                 with open(filepath, "w") as f:
                     json.dump(result, f, indent=2)
@@ -82,9 +79,10 @@ def monitor_loaded_modules() -> dict:
     }
     """
     try:
+        modules = []
         with open("/proc/modules", "r") as f:
             content = f.read().strip()
-            lines = content.split()
+            lines = content.split("\n")
             for line in lines:
                 line = line.strip()
                 columns = line.split()
@@ -106,8 +104,8 @@ def monitor_loaded_modules() -> dict:
                         "state": columns[4] if len(columns) > 4 else "",
                         "offset": columns[5] if len(columns) > 5 else None,
                     }
-
                     modules.append(module_info)
+
             total_modules = len(modules)
 
             return {

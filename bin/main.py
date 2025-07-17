@@ -36,7 +36,7 @@ def get_args():
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="../data/output",
+        default="data/output",
         help="The output directory of the generated JSON monitoring responses.",
     )
     # Flag arguments (which monitoring methods are enabled) + method specific arguments (secondary)
