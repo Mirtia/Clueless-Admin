@@ -37,7 +37,7 @@ def get_args():
         "--output-dir",
         type=str,
         default="../data/output",
-        help="The output directory of the generated JSON responses by the monitoring.",
+        help="The output directory of the generated JSON monitoring responses.",
     )
     # Flag arguments (which monitoring methods are enabled) + method specific arguments (secondary)
     # The module specific arguments are optional, they have default values set.
@@ -50,13 +50,13 @@ def get_args():
     parser.add_argument(
         "--bcc-enabled",
         action="store_true",
-        help="Use BCC for enabled eBPF monitoring (default: False)",
+        help="Use BCC for enabled eBPF monitoring.",
     )
 
     parser.add_argument(
         "--ftrace",
         action="store_true",
-        help="Use ftrace for monitoring (default: False)",
+        help="Enable ftrace monitoring.",
     )
     # Module specific
     parser.add_argument(
@@ -68,25 +68,25 @@ def get_args():
     parser.add_argument(
         "--io-uring",
         action="store_true",
-        help="Use io_uring for monitoring (default: False)",
+        help="Enable io_uring monitoring.",
     )
 
     parser.add_argument(
         "--networking",
         action="store_true",
-        help="Enable networking monitoring (default: False)",
+        help="Enable networking monitoring.",
     )
 
     parser.add_argument(
         "--process",
         action="store_true",
-        help="Enable process monitoring (default: False)",
+        help="Enable process monitoring.",
     )
 
     parser.add_argument(
         "--file-system",
         action="store_true",
-        help="Enable file system monitoring (default: False)",
+        help="Enable file system monitoring.",
     )
     # Module specific
     parser.add_argument(
@@ -98,7 +98,7 @@ def get_args():
     parser.add_argument(
         "--modules",
         action="store_true",
-        help="Enable kernel modules monitoring (default: False)",
+        help="Enable kernel modules monitoring.",
     )
 
     args = parser.parse_args()
@@ -106,14 +106,14 @@ def get_args():
 
 
 async def main():
-    print(
-        r" _____ _            _                  ___      _           _       ",
-        r"/  __ \ |          | |                / _ \    | |         (_)      ",
-        r"| /  \/ |_   _  ___| | ___  ___ ___  / /_\ \ __| |_ __ ___  _ _ __  ",
-        r"| |   | | | | |/ _ \ |/ _ \/ __/ __| |  _  |/ _` | '_ ` _ \| | '_ \ ",
-        r"| \__/\ | |_| |  __/ |  __/\__ \__ \ | | | | (_| | | | | | | | | | |",
-        r" \____/_|\__,_|\___|_|\___||___/___/ \_| |_/\__,_|_| |_| |_|_|_| |_|",
-    )
+    print(r"""
+     _____ _            _                  ___      _           _
+    /  __ \ |          | |                / _ \    | |         (_)
+    | /  \/ |_   _  ___| | ___  ___ ___  / /_\ \ __| |_ __ ___  _ _ __
+    | |   | | | | |/ _ \ |/ _ \/ __/ __| |  _  |/ _` | '_ ` _ \| | '_ \
+    | \__/\ | |_| |  __/ |  __/\__ \__ \ | | | | (_| | | | | | | | | | |
+     \____/_|\__,_|\___|_|\___||___/___/ \_| |_/\__,_|_| |_| |_|_|_| |_|
+    """)
 
     args = get_args()
     # TODO: Add logger
@@ -162,3 +162,7 @@ async def main():
             tasks.append(asyncio.create_task(func()))
 
     await asyncio.gather(*tasks)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

@@ -5,6 +5,7 @@ import time
 from datetime import datetime
 from typing import Any, Dict
 
+
 def call(
     bcc_enabled: bool = False,
     duration: int = 10,

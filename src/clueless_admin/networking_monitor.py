@@ -5,7 +5,7 @@ from datetime import datetime
 import iptc
 
 
-def call(duration: int, frequency: int, output_dir: str = "./net_output"):
+def call(duration: int, frequency: int, output_dir: str = "../../data/output"):
     """
     Periodically runs all network monitor functions and saves each output as:
     output_dir/net_monitor_<timestamp>/<monitor_name>_<timestamp>_<iteration>.json

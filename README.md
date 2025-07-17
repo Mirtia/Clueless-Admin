@@ -16,7 +16,6 @@ Then, create a directory for the output logs:
 mkdir -p logs/yara/
 ```
 
-
 After creating the directory, update submodules by running `git submodule update --remote` to fetch any new rules added by Elastic and then run the following:
 
 ```bash
@@ -43,4 +42,19 @@ mkdir -p ../../logs/chkrootkit/ && sudo chkrootkit -x &> ../../logs/chkrootkit/c
 
 ## Additional required packages
 
-<!-- sudo dnf install bcc bcc-devel python3-bcc -->
+For ebpf monitoring with bcc, the following system packages are required:
+
+```sh
+sudo dnf install bcc bcc-devel python3-bcc 
+```
+
+## Running clueless admin
+
+Examples:
+
+
+```sh
+# Monitor networking
+
+```
+

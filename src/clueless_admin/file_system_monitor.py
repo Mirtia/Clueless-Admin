@@ -1,11 +1,8 @@
-import os
-from datetime import datetime
-
+import json
 import os
 import time
-import json
 from datetime import datetime
-from typing import Optional, Iterable
+from typing import Iterable, Optional
 
 
 def call(

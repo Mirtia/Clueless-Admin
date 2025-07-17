@@ -1,9 +1,11 @@
 import time
 from datetime import datetime
 
+
 def call(callable_syscall, duration, frequency):
-    # For now ignore this module.
+    # TODO: Maybe implement. For now, ignore this module.
     raise NotImplementedError
+
 
 def syscall_timing_check(callable_syscall, iterations=100, *args, **kwargs):
     """
@@ -24,7 +26,7 @@ def syscall_timing_check(callable_syscall, iterations=100, *args, **kwargs):
             },
             "message": "Syscall timing measured successfully."
         }
-    """ 
+    """
     times = []
     for _ in range(iterations):
         start = time.perf_counter_ns()
@@ -43,5 +45,5 @@ def syscall_timing_check(callable_syscall, iterations=100, *args, **kwargs):
             "min_ns": min_ns,
             "iterations": iterations,
         },
-        "message": "Syscall timing measured successfully."
+        "message": "Syscall timing measured successfully.",
     }

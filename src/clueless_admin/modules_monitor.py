@@ -1,11 +1,11 @@
+import json
 import os
 import time
-import json
 from datetime import datetime
 
 
 def call(
-    use_bcc: bool, duration: int, frequency: int, output_dir: str = "./modules_output"
+    use_bcc: bool, duration: int, frequency: int, output_dir: str = "../../data/output"
 ):
     """
     Calls module monitors every 'frequency' seconds for 'duration' seconds,
