@@ -5,7 +5,7 @@ from datetime import datetime
 
 
 async def call(
-    use_bcc: bool, duration: int, frequency: int, output_dir: str = "../../data/output"
+    duration: int, frequency: int, output_dir: str = "../data/output"
 ):
     """
     Calls module monitors every 'frequency' seconds for 'duration' seconds,
@@ -13,7 +13,6 @@ async def call(
     output_dir / modules_monitor_<timestamp> / <monitor>_<timestamp>_<iteration>.json
 
     Parameters:
-        use_bcc (bool): Placeholder for consistency.
         duration (int or float): Total duration of calls in seconds.
         frequency (int or float): Interval between calls in seconds.
         output_dir (str): Base directory to save the JSON results.
@@ -43,6 +42,9 @@ async def call(
         for monitor_name, result in monitors.items():
             filename = f"{monitor_name}_{root_timestamp}_{iteration}.json"
             filepath = os.path.join(run_dir, filename)
+            print("=======")
+            print(filepath)
+            print("=======")
             try:
                 with open(filepath, "w") as f:
                     json.dump(result, f, indent=2)

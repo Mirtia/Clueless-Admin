@@ -4,7 +4,7 @@ import time
 from datetime import datetime
 
 
-async def call(duration: int, frequency: int, output_dir: str = "../../data/output"):
+async def call(duration: int, frequency: int, output_dir: str = "../data/output"):
     """
     Periodically runs process and thread monitors and stores results in JSON files
     under a time-stamped run directory.
