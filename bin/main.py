@@ -142,12 +142,12 @@ async def main():
             duration=args.duration, frequency=args.frequency, output_dir=args.output_dir
         ),
         "file_system": lambda: file_system_monitor.call(
+            duration=args.duration,
+            frequency=args.frequency,
             known_directories_file=(
                 args.known_directories if args.known_directories else None
             ),
-            duration=args.duration,
-            frequency=args.frequency,
-            output_dir=args.output_dir,
+            output_dir=args.output_dir
         ),
         "modules": lambda: modules_monitor.call(
             duration=args.duration, frequency=args.frequency, output_dir=args.output_dir

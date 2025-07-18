@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from datetime import datetime
 
 import iptc
@@ -41,7 +42,6 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
             filename = f"{monitor_name}_{root_timestamp}_{iteration}.json"
             filepath = os.path.join(run_dir, filename)
             try:
-                # list_iptables_filter_table might return a string
                 if isinstance(result, str):
                     result = json.loads(result)
                 with open(filepath, "w") as f:
@@ -339,6 +339,24 @@ def list_iptables_filter_table() -> dict:
         "message": "<STATUS_MESSAGE>"
     }
     """
+
+    def serialize_policy(policy: iptc.Policy) -> str:
+        """Serializes a policy to a string so that it is JSON serializable.
+
+        Args:
+            policy (iptc.Policy): Policy object of iptables class.
+
+        Returns:
+            str: The policy as string.
+        """
+        if policy is None:
+            return None
+        if isinstance(policy, str):
+            return policy
+        if hasattr(policy, "name"):
+            return policy.name
+        return str(policy)
+
     # It requires root privileges to access iptables rules.
     if os.geteuid() != 0:
         return {
@@ -358,7 +376,9 @@ def list_iptables_filter_table() -> dict:
         for chain in table.chains:
             chain_data = {
                 "name": chain.name,
-                "policy": chain.get_policy() if chain.is_builtin() else None,
+                "policy": (
+                    serialize_policy(chain.get_policy()) if chain.is_builtin() else None
+                ),
                 "rules": [],
             }
             for rule in chain.rules:
@@ -376,7 +396,7 @@ def list_iptables_filter_table() -> dict:
         result["message"] = "Filter table iptables rules retrieved successfully."
     except Exception as e:
         result["message"] = f"Error: {e}"
-    return json.dumps(result, indent=2)
+    return result
 
 
 def list_unix_sockets() -> dict:

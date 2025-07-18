@@ -6,9 +6,9 @@ from typing import Iterable, Optional
 
 
 async def call(
-    directories: Optional[Iterable[str]],
     duration: int,
     frequency: int,
+    known_directories_file: Optional[str] = "/data/input/directory_list.txt",
     output_dir: str = "data/output",
 ):
     """
@@ -33,13 +33,15 @@ async def call(
 
         monitors = {
             "file_descriptors": monitor_file_descriptors(),
-            "inodes": monitor_inodes(),
-            "known_directories": monitor_known_directories(
-                known_directories=directories, has_input_file=False
+            "known_directories": (
+                monitor_known_directories(
+                    known_directories_file=known_directories_file, has_input_file=True
+                )
+                if known_directories_file
+                else monitor_known_directories(has_input_file=False)
             ),
             "file_systems": monitor_file_systems(),
         }
-
         # Iteration count: i+1 (or i if you want zero-based)
         iteration = i
         for monitor_name, result in monitors.items():
@@ -126,66 +128,66 @@ def monitor_file_descriptors():
         }
 
 
-def monitor_inodes():
-    """
-    Monitor inodes in the system.
+# def monitor_inodes():
+#     """
+#     Monitor inodes in the system.
 
-    Reads the /proc filesystem to gather information about inodes and their usage.
+#     Reads the /proc filesystem to gather information about inodes and their usage.
 
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "total_inodes": 1000,
-            "inodes": [
-                {
-                    "inode": 123456,
-                    "path": "/path/to/file",
-                    "type": "REG",
-                    "size": 2048
-                },
-                ...
-            ]
-        },
-        "message": "Inodes monitored successfully."
-    }
-    """
-    try:
-        inodes = []
-        for root, dirs, files in os.walk("/"):
-            for name in files + dirs:
-                path = os.path.join(root, name)
-                try:
-                    stat_info = os.stat(path)
-                    inodes.append(
-                        {
-                            "inode": stat_info.st_ino,
-                            "path": path,
-                            "type": "REG" if os.path.isfile(path) else "DIR",
-                            "size": stat_info.st_size,
-                        }
-                    )
-                except Exception:
-                    continue
+#     Returns a JSON with the following structure:
+#     {
+#         "timestamp": "2025-10-01T12:00:00",
+#         "data": {
+#             "total_inodes": 1000,
+#             "inodes": [
+#                 {
+#                     "inode": 123456,
+#                     "path": "/path/to/file",
+#                     "type": "REG",
+#                     "size": 2048
+#                 },
+#                 ...
+#             ]
+#         },
+#         "message": "Inodes monitored successfully."
+#     }
+#     """
+#     try:
+#         inodes = []
+#         for root, dirs, files in os.walk("/"):
+#             for name in files + dirs:
+#                 path = os.path.join(root, name)
+#                 try:
+#                     stat_info = os.stat(path)
+#                     inodes.append(
+#                         {
+#                             "inode": stat_info.st_ino,
+#                             "path": path,
+#                             "type": "REG" if os.path.isfile(path) else "DIR",
+#                             "size": stat_info.st_size,
+#                         }
+#                     )
+#                 except Exception:
+#                     continue
 
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {"total_inodes": len(inodes), "inodes": inodes},
-            "message": "Inodes monitored successfully.",
-        }
+#         return {
+#             "timestamp": datetime.now().isoformat(),
+#             "data": {"total_inodes": len(inodes), "inodes": inodes},
+#             "message": "Inodes monitored successfully.",
+#         }
 
-    except Exception as e:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": f"Error monitoring inodes: {str(e)}",
-        }
+#     except Exception as e:
+#         return {
+#             "timestamp": datetime.now().isoformat(),
+#             "data": {},
+#             "message": f"Error monitoring inodes: {str(e)}",
+#         }
 
 
 def monitor_known_directories(
     known_directories_file: Optional[str] = None,
     has_input_file: bool = False,
-    known_directories: Optional[Iterable[str]] = None,
+    known_directories: Optional[dict[str]] = {"/dev", "/tmp", "/sys"},
 ) -> dict:
     """
     Monitor known directories in the system.

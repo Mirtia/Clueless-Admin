@@ -58,24 +58,15 @@ def monitor_io_uring():
     """
     Monitor io_uring usage in the system.
 
-    Reads the /proc/io_uring file to gather information about io_uring instances.
+    Use ftrace capabilities to analyze io_uring events.
 
     Returns a JSON with the following structure:
     {
         "timestamp": "2025-10-01T12:00:00",
         "data": {
-            "total_instances": 3,
-            "instances": [
-                {
-                    "instance_id": "12345",
-                    "sq_size": 1024,
-                    "cq_size": 1024,
-                    "flags": "0x0"
-                },
-                ...
-            ]
+
         },
-        "message": "io_uring instances monitored successfully."
+        "message": "io_uring traces monitored successfully."
     }
     """
     try:
