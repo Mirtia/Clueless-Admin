@@ -117,7 +117,6 @@ def get_args():
 
 
 async def main():
-    print("---------------------------------------------------------------------------")
     print(
         r"""
      _____ _            _                  ___      _           _
@@ -178,8 +177,6 @@ async def main():
             tasks.append(asyncio.create_task(func()))
 
     await asyncio.gather(*tasks)
-
-    print("---------------------------------------------------------------------------")
 
 
 if __name__ == "__main__":
