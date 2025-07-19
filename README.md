@@ -1,80 +1,8 @@
-# Requirements
+# Clueless Admin
 
-## Signature-based detection
+## Usage
 
-To run the most basic setup for signature-based detection for linux rootkits.
-
-First install *yara* using your favourite package manager:
-
-```bash
-sudo dnf install yara
-```
-
-Then, create a directory for the output logs:
-
-```bash
-mkdir -p logs/yara/
-```
-
-After creating the directory, update submodules by running `git submodule update --remote` to fetch any new rules added by Elastic and then run the following:
-
-```bash
-yara -r yara/yara/rules/Linux*.yar ~ > logs/yara/scan-$(date +%F_%H-%M-%S).log 2>&1
-```
-
-## Tools
-
-### Chkrootkit
-
-To use [chkrootkit](tools/chkrootkit/), build it with `make`. It requires `glibc-static`.
-
-To run:
-```bash
-sudo chkrootkit
-# Recommending expert mode:
-mkdir -p ../../logs/chkrootkit/ && sudo chkrootkit -x &> ../../logs/chkrootkit/chkrootkit.logs 
-```
-
-## Volatility 
-
-[Volatility plugins](https://github.com/volatilityfoundation/volatility3/tree/develop/volatility3/framework/plugins/linux)
-
-
-## Additional required packages
-
-For ebpf monitoring with bcc, the following system packages are required:
-
-```sh
-sudo dnf install bcc bcc-devel python3-bcc 
-```
-
-For monitoring with `bpftool`:
-
-```sh
-sudo dnf install bpftool
-``` 
-
-For tests:
-```sh
-sudo dnf install bpftrace
-```
-
-And also:
-```
-git clone https://github.com/axboe/liburing.git
-cd liburing
-configure
-make
-cp examples/io_uring-cp /usr/bin
-```
-
-**Warning**: Make sure that the python version defined by `uv` matches the python version of your system as uv venv creation was performed using `--system-site-packages`. 
-
-## Running clueless admin
-
-`ebpf`, `io_uring` and `network` (iptables) monitoring require `sudo`.
-
-### Options
+> `ebpf`, `io_uring` and `network` (iptables) monitoring require `sudo`.
 
 ```sh
 
@@ -111,7 +39,7 @@ options:
   --modules             Enable kernel modules monitoring.
 ```
 
-## Debugging
+### Debugging
 
 First, run the script in `bin/debug.sh` providing command line arugments. The script runs the module with sudo privileges as some files require root access to be read. Run with your own responsibility.
 Open `code` as root with the following command:
@@ -120,9 +48,82 @@ sudo codium . --no-sandbox --user-data-dir <USER_DIRECTORY>
 ```
 Then, attach to `.vscode` debugger and have fun debugging.
 
-## Tests
+### Tests
 
 To run the tests, from the root directory, execute the following: 
 ```sh
 sudo PYTHONPATH=src .venv/bin/python -m pytest -rs
 ```
+
+
+## Signature-based detection
+
+To run the most basic setup for signature-based detection for linux rootkits.
+
+First install *yara* using your favourite package manager:
+
+```bash
+sudo dnf install yara
+```
+
+Then, create a directory for the output logs:
+
+```bash
+mkdir -p logs/yara/
+```
+
+After creating the directory, update submodules by running `git submodule update --remote` to fetch any new rules added by Elastic and then run the following:
+
+```bash
+yara -r yara/yara/rules/Linux*.yar ~ > logs/yara/scan-$(date +%F_%H-%M-%S).log 2>&1
+```
+
+
+## Tools
+
+### Chkrootkit
+
+To use [chkrootkit](tools/chkrootkit/), build it with `make`. It requires `glibc-static`.
+
+To run:
+```bash
+sudo chkrootkit
+# Recommending expert mode:
+mkdir -p ../../logs/chkrootkit/ && sudo chkrootkit -x &> ../../logs/chkrootkit/chkrootkit.logs 
+```
+
+
+## Volatility 
+
+[Volatility plugins](https://github.com/volatilityfoundation/volatility3/tree/develop/volatility3/framework/plugins/linux)
+
+
+## Additional required packages
+
+For ebpf monitoring with bcc, the following system packages are required:
+
+```sh
+sudo dnf install bcc bcc-devel python3-bcc 
+```
+
+For monitoring with `bpftool`:
+
+```sh
+sudo dnf install bpftool
+``` 
+
+For tests:
+```sh
+sudo dnf install bpftrace
+```
+
+And also:
+```
+git clone https://github.com/axboe/liburing.git
+cd liburing
+configure
+make
+cp examples/io_uring-cp /usr/bin
+```
+
+**Warning**: Make sure that the python version defined by `uv` matches the python version of your system as uv venv creation was performed using `--system-site-packages`. 
