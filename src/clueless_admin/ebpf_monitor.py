@@ -129,7 +129,7 @@ def monitor_loaded_ebpf(bcc_enabled: bool = False) -> Dict[str, Any]:
 
         loaded = []
         attachment_points = {}
-        kprobes = BPF.get_kprobe_functions("")
+        kprobes = BPF.get_kprobe_functions(b"")
         loaded.extend([{"type": "kprobe", "name": fn} for fn in kprobes])
         if kprobes:
             attachment_points["kprobe"] = list(kprobes)

@@ -20,4 +20,4 @@ fi
 echo "Changing ownership of '$TARGET_PATH' to ${TARGET_USER}:${TARGET_GROUP}..."
 sudo chown -R "${TARGET_USER}:${TARGET_GROUP}" "$TARGET_PATH"
 
-echo "Ownership change for ${$TARGET_PATH} completed successfully."
+echo "Ownership change for ${TARGET_PATH} completed successfully."
