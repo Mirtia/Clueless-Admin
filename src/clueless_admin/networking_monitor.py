@@ -47,7 +47,7 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
                 with open(filepath, "w") as f:
                     json.dump(result, f, indent=2)
             except Exception as e:
-                print(f"Failed to write {filepath}: {e}")
+                print(f"Error: Failed to write {filepath}: {e}")
 
         # Sleep until next scheduled time
         time_to_next = frequency - ((time.time() - start_time) % frequency)

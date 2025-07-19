@@ -3,8 +3,21 @@ import os
 import time
 from datetime import datetime
 
+# Globals
+FTRACE_PATH = "/sys/kernel/debug/tracing"
+FTRACE_PIPE = os.path.join(FTRACE_PATH, "trace_pipe")
+FTRACE_FILTER = os.path.join(FTRACE_PATH, "set_ftrace_filter")
+FTRACE_TRACER = os.path.join(FTRACE_PATH, "current_tracer")
+FTRACE_ON = os.path.join(FTRACE_PATH, "tracing_on")
 
-async def call(duration: int, frequency: int, output_dir: str = "data/output"):
+
+async def call(
+    duration: int,
+    frequency: int,
+    max_events=50,
+    timeout=5,
+    output_dir: str = "data/output",
+):
     """
     Calls monitor_io_uring() every 'frequency' seconds for 'duration' seconds,
     and saves the return value as JSON to:
@@ -31,7 +44,7 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
             break
 
         try:
-            result = monitor_io_uring()
+            result = monitor_io_uring(max_events, timeout)
         except Exception as e:
             result = {
                 "timestamp": datetime.utcnow().isoformat() + "Z",
@@ -46,7 +59,7 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
             with open(filepath, "w") as f:
                 json.dump(result, f, indent=2)
         except Exception as e:
-            print(f"Failed to write {filepath}: {e}")
+            print(f"Error: Failed to write {filepath}: {e}")
 
         # Sleep until the next scheduled time
         time_to_next = frequency - ((time.time() - start_time) % frequency)
@@ -54,67 +67,132 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
             time.sleep(min(time_to_next, max(0, duration - (time.time() - start_time))))
 
 
-def monitor_io_uring():
+def setup_ftrace_io_uring():
     """
-    Monitor io_uring usage in the system.
+    Configure ftrace to monitor io_uring-related syscalls.
+    Only adds functions not already in the filter.
+    """
+    # Step 1: Get available io_uring-related function names
+    with open(os.path.join(FTRACE_PATH, "available_filter_functions")) as f:
+        filter_funcs = f.read()
+    available_functions = set(
+        line.strip().split()[0]
+        for line in filter_funcs.splitlines()
+        if "io_uring" in line
+    )
 
-    Use ftrace capabilities to analyze io_uring events.
+    if not available_functions:
+        raise RuntimeError("No io_uring-related functions found.")
 
-    Returns a JSON with the following structure:
+    # Step 2: Read current set_ftrace_filter contents (may be empty)
+    current_functions = set()
+    if os.path.exists(FTRACE_FILTER):
+        with open(FTRACE_FILTER, "r") as f:
+            current_functions = set(line.strip() for line in f if line.strip())
+
+    # Step 3: Find which functions are new (not already set)
+    to_add = available_functions - current_functions
+
+    if not to_add:
+        print("Log: No new io_uring functions to add; filter already up to date.")
+    else:
+        with open(FTRACE_FILTER, "a") as f:
+            for func in sorted(to_add):
+                f.write(func + "\n")
+        print(f"Log: Added {len(to_add)} io_uring functions to set_ftrace_filter.")
+
+    with open(FTRACE_ON, "w") as f:
+        f.write("0\n")
+    with open(os.path.join(FTRACE_PATH, "available_tracers")) as f:
+        available = f.read()
+    if "function" not in available:
+        raise RuntimeError('"function" tracer not available on this kernel.')
+    with open(FTRACE_TRACER, "w") as f:
+        f.write("function\n")
+    # Enable after filter setup is complete.
+    with open(FTRACE_ON, "w") as f:
+        f.write("1\n")
+
+
+def monitor_io_uring(max_events=50, timeout=5):
+    """
+    Monitor io_uring usage in the system via ftrace.
+
+    Collect up to max_events or until timeout seconds have elapsed,
+    whichever comes first.
+
+    Returns a JSON object with the following structure:
     {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-
-        },
-        "message": "io_uring traces monitored successfully."
+        "timestamp": "...",
+        "data": {"total_events": ..., "events": [...]},
+        "message": ...
     }
     """
     try:
-        # Read /proc/io_uring
-        with open("/proc/io_uring", "r") as f:
-            content = f.read().strip()
-
-        if not content:
+        if not os.path.exists(FTRACE_PIPE):
             return {
                 "timestamp": datetime.now().isoformat(),
-                "data": {"total_instances": 0, "instances": []},
-                "message": "No io_uring instances found.",
+                "data": {},
+                "message": (
+                    "ftrace trace_pipe not found. Root privileges and a mounted debugfs "
+                    "are required for kernel-level io_uring event monitoring."
+                ),
             }
 
-        instances = []
-        for line in content.splitlines():
-            parts = line.split()
-            if len(parts) < 3:
-                continue
-
-            instance = {
-                "instance_id": parts[0],
-                "sq_size": int(parts[1]),
-                "cq_size": int(parts[2]),
-                "flags": parts[3] if len(parts) > 3 else "",
+        try:
+            setup_ftrace_io_uring()
+        except Exception as e:
+            return {
+                "timestamp": datetime.now().isoformat(),
+                "data": {},
+                "message": f"Failed to configure ftrace for io_uring monitoring: {str(e)}",
             }
-            instances.append(instance)
+
+        events = []
+        start_time = time.time()
+        with open(FTRACE_PIPE, "r") as f:
+            while len(events) < max_events:
+                # Wait for data or timeout
+                rlist, _, _ = select.select([f], [], [], timeout)
+                if not rlist:
+                    # Timed out waiting for more events
+                    break
+                line = f.readline()
+                if not line:
+                    break
+                events.append(line.strip())
+                # Optional: break if overall time limit exceeded
+                if time.time() - start_time > timeout:
+                    break
 
         return {
             "timestamp": datetime.now().isoformat(),
-            "data": {"total_instances": len(instances), "instances": instances},
-            "message": "io_uring instances monitored successfully.",
+            "data": {
+                "total_events": len(events),
+                "events": events,
+            },
+            "message": (
+                f"io_uring events monitored successfully via ftrace. "
+                f"{len(events)} events collected."
+                if events
+                else "No io_uring events detected in ftrace output."
+            ),
         }
 
     except Exception as e:
         return {
             "timestamp": datetime.now().isoformat(),
             "data": {},
-            "message": f"Error monitoring io_uring: {str(e)}",
+            "message": f"Error during io_uring ftrace monitoring: {str(e)}",
         }
 
 
 # == Notes ==
-# 0 syscalls is of course not possible, but the idea is to prove that the rootkit is not using any syscalls that are related to the attack,
+# On io_uring rootkit: 0 syscalls is of course not possible, but the idea is to prove that the rootkit is not using any syscalls that are related to the attack,
 # only the io_uring syscalls are used.
-# Once you place one or more SQEs on to the SQ, you need to
+# On system calls: Once you place one or more SQEs on to the SQ, you need to
 # let the kernel know that you've done so. You can do this
 # by calling the io_uring_enter(2) system call.
-# https://man7.org/linux/man-pages/man7/io_uring.7.html
+# See more: https://man7.org/linux/man-pages/man7/io_uring.7.html
 # Known rootkit will use this method with the only visible syscalls being the io_uring.
-# Some known modules that use the io_uring is qemu and nginx.
+# Possible false positives: Some known modules that use the io_uring is qemu and nginx.

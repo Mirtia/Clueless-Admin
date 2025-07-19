@@ -70,6 +70,17 @@ def get_args():
         action="store_true",
         help="Enable io_uring monitoring.",
     )
+    # Module specific
+    parser.add_argument(
+        "--max-events",
+        action="store_true",
+        help="Maximum events to monitor for io_uring.",
+    )
+    parser.add_argument(
+        "--timeout",
+        action="store_true",
+        help="Timeout io_uring monitoring after provided seconds.",
+    )
 
     parser.add_argument(
         "--networking",
@@ -106,14 +117,17 @@ def get_args():
 
 
 async def main():
-    print(r"""
+    print("---------------------------------------------------------------------------")
+    print(
+        r"""
      _____ _            _                  ___      _           _
     /  __ \ |          | |                / _ \    | |         (_)
     | /  \/ |_   _  ___| | ___  ___ ___  / /_\ \ __| |_ __ ___  _ _ __
     | |   | | | | |/ _ \ |/ _ \/ __/ __| |  _  |/ _` | '_ ` _ \| | '_ \
     | \__/\ | |_| |  __/ |  __/\__ \__ \ | | | | (_| | | | | | | | | | |
      \____/_|\__,_|\___|_|\___||___/___/ \_| |_/\__,_|_| |_| |_|_|_| |_|
-    """)
+    """
+    )
 
     args = get_args()
     # TODO: Add logger
@@ -133,6 +147,8 @@ async def main():
         "io_uring": lambda: io_uring_monitor.call(
             duration=args.duration,
             frequency=args.frequency,
+            max_events=args.max_events,
+            timeout=args.timeout,
             output_dir=args.output_dir,
         ),
         "networking": lambda: networking_monitor.call(
@@ -147,7 +163,7 @@ async def main():
             known_directories_file=(
                 args.known_directories if args.known_directories else None
             ),
-            output_dir=args.output_dir
+            output_dir=args.output_dir,
         ),
         "modules": lambda: modules_monitor.call(
             duration=args.duration, frequency=args.frequency, output_dir=args.output_dir
@@ -162,8 +178,9 @@ async def main():
             tasks.append(asyncio.create_task(func()))
 
     await asyncio.gather(*tasks)
-    
-    print("Ending Process Monitor...")
+
+    print("---------------------------------------------------------------------------")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
