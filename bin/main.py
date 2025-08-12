@@ -12,10 +12,11 @@ import clueless_admin.ebpf_monitor as ebpf_monitor
 import clueless_admin.file_system_monitor as file_system_monitor
 import clueless_admin.ftrace_monitor as ftrace_monitor
 import clueless_admin.io_uring_monitor as io_uring_monitor
+import clueless_admin.kallsyms_monitor as kallsyms_monitor
 import clueless_admin.modules_monitor as modules_monitor
 import clueless_admin.networking_monitor as networking_monitor
 import clueless_admin.process_monitor as process_monitor
-import clueless_admin.syscall_table_monitor as syscall_table_monitor
+import clueless_admin.syscall_monitor as syscall_monitor
 
 
 def get_args():
@@ -44,7 +45,7 @@ def get_args():
     parser.add_argument(
         "--ebpf",
         action="store_true",
-        help="Enable eBPF monitoring.",
+        help="[sudo] Enable eBPF monitoring.",
     )
     # Module specific
     parser.add_argument(
@@ -68,7 +69,7 @@ def get_args():
     parser.add_argument(
         "--io-uring",
         action="store_true",
-        help="Enable io_uring monitoring.",
+        help="[sudo] Enable io_uring monitoring.",
     )
     # Module specific
     parser.add_argument(
@@ -85,7 +86,7 @@ def get_args():
     parser.add_argument(
         "--networking",
         action="store_true",
-        help="Enable networking monitoring.",
+        help="[sudo] Enable networking monitoring.",
     )
 
     parser.add_argument(
@@ -110,6 +111,18 @@ def get_args():
         "--modules",
         action="store_true",
         help="Enable kernel modules monitoring.",
+    )
+    
+    parser.add_argument(
+        "--syscall-monitor",
+        action="store_true",
+        help="[sudo] Enable syscall monitoring (not implemented).",
+    )
+
+    parser.add_argument(
+        "--kallsyms",
+        action="store_true",
+        help="[sudo] Enable kallsyms monitoring.",
     )
 
     args = parser.parse_args()
@@ -166,6 +179,14 @@ async def main():
         ),
         "modules": lambda: modules_monitor.call(
             duration=args.duration, frequency=args.frequency, output_dir=args.output_dir
+        ),
+        "syscall_monitor": lambda: syscall_monitor.call(
+            duration=args.duration, frequency=args.frequency, output_dir=args.output_dir
+        ),
+        "kallsyms": lambda: kallsyms_monitor.call(
+            duration=args.duration,
+            frequency=args.frequency,
+            output_dir=args.output_dir,
         ),
     }
     tasks = []

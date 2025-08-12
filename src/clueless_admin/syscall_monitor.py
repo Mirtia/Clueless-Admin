@@ -2,7 +2,7 @@ import time
 from datetime import datetime
 
 
-async def call(callable_syscall, duration, frequency):
+async def sycallcall(callable_syscall, duration, frequency):
     # TODO: Maybe implement. For now, ignore this module.
     raise NotImplementedError
 

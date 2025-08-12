@@ -3,7 +3,12 @@ import os
 import time
 from datetime import datetime
 
+# See: https://www.kernel.org/doc/html/latest/trace/ftrace.html
 TRACING_DIR = "/sys/kernel/debug/tracing"
+
+# Debugfs is a special susbystem in linux designed to
+# expose kernel space information / logs to userspace.
+# It is generally mounted at /sys/kernel/debug.
 
 
 async def call(

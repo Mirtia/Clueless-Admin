@@ -13,8 +13,7 @@
     | \__/\ | |_| |  __/ |  __/\__ \__ \ | | | | (_| | | | | | | | | | |
      \____/_|\__,_|\___|_|\___||___/___/ \_| |_/\__,_|_| |_| |_|_|_| |_|
     
-usage: main.py [-h] [--duration DURATION] [--frequency FREQUENCY] [--output-dir OUTPUT_DIR] [--ebpf] [--bcc-enabled] [--ftrace] [--max-trace-lines] [--io-uring] [--max-events]
-               [--timeout] [--networking] [--process] [--file-system] [--known-directories] [--modules]
+usage: main.py [-h] [--duration DURATION] [--frequency FREQUENCY] [--output-dir OUTPUT_DIR] [--ebpf] [--bcc-enabled] [--ftrace] [--max-trace-lines] [--io-uring] [--max-events] [--timeout] [--networking] [--process] [--file-system] [--known-directories] [--modules] [--syscall-monitor] [--kallsyms]
 
 Clueless Admin monitoring tool.
 
@@ -25,18 +24,20 @@ options:
                         Frequency in seconds to run each monitoring task (default: 1 second)
   --output-dir OUTPUT_DIR
                         The output directory of the generated JSON monitoring responses.
-  --ebpf                Enable eBPF monitoring.
+  --ebpf                [sudo] Enable eBPF monitoring.
   --bcc-enabled         Use BCC for enabled eBPF monitoring.
   --ftrace              Enable ftrace monitoring.
   --max-trace-lines     Maximum lines to include from trace file.
-  --io-uring            Enable io_uring monitoring.
+  --io-uring            [sudo] Enable io_uring monitoring.
   --max-events          Maximum events to monitor for io_uring.
   --timeout             Timeout io_uring monitoring after provided seconds.
-  --networking          Enable networking monitoring.
+  --networking          [sudo] Enable networking monitoring.
   --process             Enable process monitoring.
   --file-system         Enable file system monitoring.
   --known-directories   Provide a file (.txt file with one column) with directories to monitor.
   --modules             Enable kernel modules monitoring.
+  --syscall-monitor     [sudo] Enable syscall monitoring (not implemented).
+  --kallsyms            [sudo] Enable kallsyms monitoring.
 ```
 
 ### Debugging
@@ -127,3 +128,4 @@ cp examples/io_uring-cp /usr/bin
 ```
 
 **Warning**: Make sure that the python version defined by `uv` matches the python version of your system as uv venv creation was performed using `--system-site-packages`. 
+

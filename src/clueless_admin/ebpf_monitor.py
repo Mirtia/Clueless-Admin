@@ -74,6 +74,8 @@ def monitor_loaded_ebpf(bcc_enabled: bool = False) -> Dict[str, Any]:
             "loaded_programs": [...],
             "attachment_points": {...},
         },
+        "status": "success" or "error",
+        "code": 0 or non-zero,
         "message": "Placeholder message."
     }
     """
