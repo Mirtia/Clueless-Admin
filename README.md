@@ -2,7 +2,7 @@
 
 ## Usage
 
-> `ebpf`, `io_uring` and `network` (iptables) monitoring require `sudo`.
+> `ebpf`, `io_uring`, `networking` (iptables) and `kallsyms` monitoring require `sudo`.
 
 ```sh
 
