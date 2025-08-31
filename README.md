@@ -129,3 +129,8 @@ cp examples/io_uring-cp /usr/bin
 
 **Warning**: Make sure that the python version defined by `uv` matches the python version of your system as uv venv creation was performed using `--system-site-packages`. 
 
+
+## TODO
+
+- [ ] Fix schema
+- [ ] Update instructions for Ubuntu (apt). The test VMs are Ubuntu based.
