@@ -16,7 +16,6 @@ import clueless_admin.kallsyms_monitor as kallsyms_monitor
 import clueless_admin.modules_monitor as modules_monitor
 import clueless_admin.networking_monitor as networking_monitor
 import clueless_admin.process_monitor as process_monitor
-import clueless_admin.syscall_monitor as syscall_monitor
 
 
 def get_args():
@@ -114,12 +113,6 @@ def get_args():
     )
     
     parser.add_argument(
-        "--syscall-monitor",
-        action="store_true",
-        help="[sudo] Enable syscall monitoring (not implemented).",
-    )
-
-    parser.add_argument(
         "--kallsyms",
         action="store_true",
         help="[sudo] Enable kallsyms monitoring.",
@@ -178,9 +171,6 @@ async def main():
             output_dir=args.output_dir,
         ),
         "modules": lambda: modules_monitor.call(
-            duration=args.duration, frequency=args.frequency, output_dir=args.output_dir
-        ),
-        "syscall_monitor": lambda: syscall_monitor.call(
             duration=args.duration, frequency=args.frequency, output_dir=args.output_dir
         ),
         "kallsyms": lambda: kallsyms_monitor.call(

@@ -57,7 +57,7 @@ def monitor_process():
     {
         "timestamp": "2025-10-01T12:00:00",
         "data": {
-            "total_processes": 42,
+            "count": 42,
             "processes": [
                 {
                     "pid": 1234,
@@ -95,7 +95,7 @@ def monitor_process():
 
         return {
             "timestamp": datetime.now().isoformat(),
-            "data": {"total_processes": len(processes), "processes": processes},
+            "data": {"count": len(processes), "processes": processes},
             "message": "Processes monitored successfully.",
         }
 
