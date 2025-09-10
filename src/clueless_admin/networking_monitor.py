@@ -1,16 +1,43 @@
+# net_monitor.py
 import json
 import os
 import time
 from datetime import datetime
+from typing import Dict, Any, List, Optional, Tuple
 
 import iptc
+
+from clueless_admin.response import (
+    TaskType,
+    ErrorCode,
+    make_success_response,
+    make_error_response,
+)
 
 
 async def call(duration: int, frequency: int, output_dir: str = "data/output"):
     """
     Periodically runs all network monitor functions and saves each output as:
-    output_dir/net_monitor_<timestamp>/<monitor_name>_<timestamp>_<iteration>.json
+      output_dir/net_monitor_<timestamp>/<monitor_name>_<timestamp>_<iteration>.json
     """
+    # Validate inputs
+    if frequency <= 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "NET_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid frequency: {frequency} (must be > 0)",
+        )
+        raise ValueError(json.dumps(err))
+    if duration <= 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "NET_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid duration: {duration} (must be > 0)",
+        )
+        raise ValueError(json.dumps(err))
+
     os.makedirs(output_dir, exist_ok=True)
     num_calls = int(duration // frequency)
     if duration % frequency != 0:
@@ -26,7 +53,7 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
         if elapsed > duration:
             break
 
-        monitors = {
+        monitors: Dict[str, Dict[str, Any]] = {
             "list_tcp6_sockets": list_tcp6_sockets(),
             "list_udp6_sockets": list_udp6_sockets(),
             "list_tcp_sockets": list_tcp_sockets(),
@@ -42,12 +69,18 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
             filename = f"{monitor_name}_{root_timestamp}_{iteration}.json"
             filepath = os.path.join(run_dir, filename)
             try:
-                if isinstance(result, str):
-                    result = json.loads(result)
+                # Persist exactly the schema object
                 with open(filepath, "w") as f:
-                    json.dump(result, f, indent=2)
+                    json.dump(result, f, indent=2, default=str)
             except Exception as e:
-                print(f"Error: Failed to write {filepath}: {e}")
+                io_err = make_error_response(
+                    TaskType.STATE,
+                    "NET_MONITOR_WRITE",
+                    ErrorCode.IO_FAILURE,
+                    f"Failed to write {filepath}: {e}",
+                )
+                # Best-effort: emit to stdout to avoid silent loss
+                print(json.dumps(io_err))
 
         # Sleep until next scheduled time
         time_to_next = frequency - ((time.time() - start_time) % frequency)
@@ -55,18 +88,78 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
             time.sleep(min(time_to_next, max(0, duration - (time.time() - start_time))))
 
 
-def parse_proc_net(filename: str) -> tuple:
-    """Parse the /proc/net/tcp or /proc/net/udp file to extract socket information.
+def _hex_to_ipv4(hexip: str) -> str:
+    # hexip like "0100007F" (little-endian)
+    octets = [str(int(hexip[i : i + 2], 16)) for i in (6, 4, 2, 0)]
+    return ".".join(octets)
 
-    Args:
-        filename (str): Path to the /proc/net/tcp or /proc/net/udp file.
 
-    Returns:
-        tuple: A tuple containing a list of socket dictionaries and a status message.
+def _hex_to_ipv6(hexip: str) -> str:
+    # hexip is 32 hex chars, little-endian groups of 4 bytes reversed to big-endian IPv6
+    # /proc/net/tcp6 stores address as 32 hex chars in network-byte-order but grouped little-endian per 32-bit chunk.
+    # The canonical approach is to reverse each 4-byte (8 hex) chunk order of bytes, then join.
+    # Example transformation adapted for correctness without external libs.
+    if len(hexip) != 32:
+        return "::"
+    # Convert to bytes in little-endian 32-bit chunks, then to network order
+    chunks = [hexip[i : i + 8] for i in range(0, 32, 8)]
+    # For each 8-hex chunk, reverse byte-pairs
+    bytes_be: List[str] = []
+    for ch in chunks:
+        bytes_le = [ch[j : j + 2] for j in range(0, 8, 2)]
+        bytes_be.extend(bytes_le[::-1])
+    # Now we have 16 bytes in big-endian order
+    groups = ["".join(bytes_be[i : i + 2]) for i in range(0, 16, 2)]
+    # Compress leading zeros when formatting
+    hextets = [format(int(g, 16), "x") for g in groups]
+    # Collapse consecutive zero groups (::) minimally (single run)
+    # Simple implementation: find longest zero run
+    zero_runs: List[Tuple[int, int]] = []
+    start = None
+    for idx, val in enumerate(hextets):
+        if val == "0":
+            if start is None:
+                start = idx
+        else:
+            if start is not None:
+                zero_runs.append((start, idx - 1))
+                start = None
+    if start is not None:
+        zero_runs.append((start, len(hextets) - 1))
+    if zero_runs:
+        # choose the longest run
+        best = max(zero_runs, key=lambda ab: ab[1] - ab[0])
+        a, b = best
+        # replace run with empty and mark with ''
+        collapsed = hextets[:a] + [""] + hextets[b + 1 :]
+        # ensure no leading/trailing extra colons
+        addr = ":".join(collapsed)
+        if addr.startswith(":"):
+            addr = ":" + addr
+        if addr.endswith(":"):
+            addr = addr + ":"
+        # fix potential ':::' occurrences
+        while ":::" in addr:
+            addr = addr.replace(":::", "::")
+        if addr == "":
+            addr = "::"
+        return addr
+    return ":".join(hextets)
+
+
+def _tcp_udp_state_hex(state_hex: str) -> str:
+    # Keep raw hex string from /proc; caller can map if needed
+    return state_hex
+
+
+def _parse_proc_net_v4(path: str) -> Tuple[Optional[List[Dict[str, Any]]], str]:
     """
-    sockets = []
+    Parse /proc/net/{tcp,udp} (IPv4).
+    Returns (sockets | None, message)
+    """
+    sockets: List[Dict[str, Any]] = []
     try:
-        with open(filename, "r") as f:
+        with open(path, "r") as f:
             lines = f.readlines()[1:]  # skip header
         for line in lines:
             cols = line.strip().split()
@@ -74,13 +167,12 @@ def parse_proc_net(filename: str) -> tuple:
                 continue
             local_addr, local_port = cols[1].split(":")
             remote_addr, remote_port = cols[2].split(":")
-            state = cols[3]
+            state = _tcp_udp_state_hex(cols[3])
             inode = cols[9]
 
-            # Convert hex IP and port
-            lip = ".".join(str(int(local_addr[i : i + 2], 16)) for i in (6, 4, 2, 0))
+            lip = _hex_to_ipv4(local_addr)
             lport = int(local_port, 16)
-            rip = ".".join(str(int(remote_addr[i : i + 2], 16)) for i in (6, 4, 2, 0))
+            rip = _hex_to_ipv4(remote_addr)
             rport = int(remote_port, 16)
 
             sockets.append(
@@ -95,183 +187,102 @@ def parse_proc_net(filename: str) -> tuple:
             )
         return sockets, "ok"
     except Exception as e:
-        return None, f"Error parsing {filename}: {e}"
+        return None, f"Error parsing {path}: {e}"
 
 
-def list_tcp6_sockets() -> dict:
-    """List all TCP6 sockets from /proc/net/tcp6.
+def _parse_proc_net_v6(path: str) -> Tuple[Optional[List[Dict[str, Any]]], str]:
+    """
+    Parse /proc/net/{tcp6,udp6} (IPv6).
+    Returns (sockets | None, message)
+    """
+    sockets: List[Dict[str, Any]] = []
+    try:
+        with open(path, "r") as f:
+            lines = f.readlines()[1:]  # skip header
+        for line in lines:
+            cols = line.strip().split()
+            if len(cols) < 10:
+                continue
+            local_addr, local_port = cols[1].split(":")
+            remote_addr, remote_port = cols[2].split(":")
+            state = _tcp_udp_state_hex(cols[3])
+            inode = cols[9]
 
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "protocol": "tcp6",
-            "total": 10,
-            "sockets": [
+            lip = _hex_to_ipv6(local_addr)
+            lport = int(local_port, 16)
+            rip = _hex_to_ipv6(remote_addr)
+            rport = int(remote_port, 16)
+
+            sockets.append(
                 {
-                    "local_ip": "::1",
-                    "local_port": 80,
-                    "remote_ip": "::",
-                    "remote_port": 0,
-                    "state": "01",
-                    "inode": "12345"
-                },
-                ...
-            ]
-        },
-        "message": "TCP6 sockets listed successfully."
-    }
-    """
-    sockets, msg = parse_proc_net("/proc/net/tcp6")
+                    "local_ip": lip,
+                    "local_port": lport,
+                    "remote_ip": rip,
+                    "remote_port": rport,
+                    "state": state,
+                    "inode": inode,
+                }
+            )
+        return sockets, "ok"
+    except Exception as e:
+        return None, f"Error parsing {path}: {e}"
+
+
+def list_tcp6_sockets() -> Dict[str, Any]:
+    subtype = "TCP_SOCKETS_V6"
+    sockets, msg = _parse_proc_net_v6("/proc/net/tcp6")
     if sockets is None:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": msg,
-        }
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "data": {
-            "protocol": "tcp6",
-            "total": len(sockets),
-            "sockets": sockets,
-        },
-        "message": "TCP6 sockets listed successfully.",
-    }
+        return make_error_response(
+            TaskType.STATE, subtype, ErrorCode.EXECUTION_FAILURE, msg
+        )
+    data = {"protocol": "tcp6", "total": len(sockets), "sockets": sockets}
+    return make_success_response(TaskType.STATE, subtype, data)
 
 
-def list_udp6_sockets() -> dict:
-    """List all UDP6 sockets from /proc/net/udp6.
-
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "protocol": "udp6",
-            "total": 10,
-            "sockets": [
-                {
-                    "local_ip": "::1",
-                    "local_port": 53,
-                    "remote_ip": "::",
-                    "remote_port": 0,
-                    "inode": "12345"
-                },
-                ...
-            ]
-        },
-        "message": "UDP6 sockets listed successfully."
-    }
-    """
-    sockets, msg = parse_proc_net("/proc/net/udp6")
+def list_udp6_sockets() -> Dict[str, Any]:
+    subtype = "UDP_SOCKETS_V6"
+    sockets, msg = _parse_proc_net_v6("/proc/net/udp6")
     if sockets is None:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": msg,
-        }
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "data": {
-            "protocol": "udp6",
-            "total": len(sockets),
-            "sockets": sockets,
-        },
-        "message": "UDP6 sockets listed successfully.",
-    }
+        return make_error_response(
+            TaskType.STATE, subtype, ErrorCode.EXECUTION_FAILURE, msg
+        )
+    data = {"protocol": "udp6", "total": len(sockets), "sockets": sockets}
+    return make_success_response(TaskType.STATE, subtype, data)
 
 
-def list_tcp_sockets() -> dict:
-    """List all TCP sockets from /proc/net/tcp.
-
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "protocol": "tcp",
-            "total": 10,
-            "sockets": []
-        },
-        "message": "TCP sockets listed successfully."
-    }
-    """
-    sockets, msg = parse_proc_net("/proc/net/tcp")
+def list_tcp_sockets() -> Dict[str, Any]:
+    subtype = "TCP_SOCKETS_V4"
+    sockets, msg = _parse_proc_net_v4("/proc/net/tcp")
     if sockets is None:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": msg,
-        }
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "data": {
-            "protocol": "tcp",
-            "total": len(sockets),
-            "sockets": sockets,
-        },
-        "message": "TCP sockets listed successfully.",
-    }
+        return make_error_response(
+            TaskType.STATE, subtype, ErrorCode.EXECUTION_FAILURE, msg
+        )
+    data = {"protocol": "tcp", "total": len(sockets), "sockets": sockets}
+    return make_success_response(TaskType.STATE, subtype, data)
 
 
-def list_udp_sockets() -> dict:
-    """List all UDP sockets from /proc/net/udp.
-
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "protocol": "udp",
-            "total": 10,
-            "sockets": []
-        },
-        "message": "UDP sockets listed successfully."
-    }
-    """
-    sockets, msg = parse_proc_net("/proc/net/udp")
+def list_udp_sockets() -> Dict[str, Any]:
+    subtype = "UDP_SOCKETS_V4"
+    sockets, msg = _parse_proc_net_v4("/proc/net/udp")
     if sockets is None:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": msg,
-        }
-    return {
-        "timestamp": datetime.now().isoformat(),
-        "data": {
-            "protocol": "udp",
-            "total": len(sockets),
-            "sockets": sockets,
-        },
-        "message": "UDP sockets listed successfully.",
-    }
+        return make_error_response(
+            TaskType.STATE, subtype, ErrorCode.EXECUTION_FAILURE, msg
+        )
+    data = {"protocol": "udp", "total": len(sockets), "sockets": sockets}
+    return make_success_response(TaskType.STATE, subtype, data)
 
 
-def list_network_interfaces() -> dict:
-    """List all network interfaces and their statistics from /sys/class/net/.
-
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "total_interfaces": 5,
-            "interfaces": [
-                {
-                    "name": "eth0",
-                    "rx_bytes": 12345678,
-                    "tx_bytes": 87654321
-                },
-                ...
-            ]
-        },
-        "message": "Network interfaces listed successfully."
-    }
+def list_network_interfaces() -> Dict[str, Any]:
     """
-    interfaces = []
+    Enumerate interfaces under /sys/class/net and basic RX/TX counters.
+    """
+    subtype = "NETWORK_INTERFACES"
+    interfaces: List[Dict[str, Any]] = []
     try:
         for iface in os.listdir("/sys/class/net/"):
             iface_path = os.path.join("/sys/class/net/", iface)
             if not os.path.isdir(iface_path):
                 continue
-            # Try to get some stats
             stats_path = os.path.join(iface_path, "statistics")
             rx_bytes = tx_bytes = None
             if os.path.isdir(stats_path):
@@ -289,90 +300,49 @@ def list_network_interfaces() -> dict:
                     "tx_bytes": tx_bytes,
                 }
             )
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {
-                "total_interfaces": len(interfaces),
-                "interfaces": interfaces,
-            },
-            "message": "Network interfaces listed successfully.",
-        }
+        data = {"total_interfaces": len(interfaces), "interfaces": interfaces}
+        return make_success_response(TaskType.STATE, subtype, data)
     except Exception as e:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": f"Error reading /sys/class/net: {e}",
-        }
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.EXECUTION_FAILURE,
+            f"Error reading /sys/class/net: {e}",
+        )
 
 
-def list_iptables_filter_table() -> dict:
-    """List all iptables rules in the filter table.
-
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "<ISO8601_TIMESTAMP>",
-        "data": {
-            "chains": [
-                {
-                    "name": "<CHAIN_NAME>",
-                    "policy": "<CHAIN_POLICY or null>",
-                    "rules": [
-                        {
-                            "src": "<SOURCE_CIDR>",
-                            "dst": "<DESTINATION_CIDR>",
-                            "protocol": "<PROTOCOL>",
-                            "in_interface": "<IN_INTERFACE>",
-                            "out_interface": "<OUT_INTERFACE>",
-                            "target": "<TARGET_NAME or null>",
-                            "matches": [
-                                "<MATCH1_NAME>",
-                                "<MATCH2_NAME>",
-                                ...
-                            ]
-                        },
-                        ...
-                    ]
-                },
-                ...
-            ]
-        },
-        "message": "<STATUS_MESSAGE>"
-    }
+def list_iptables_filter_table() -> Dict[str, Any]:
     """
+    Enumerate iptables filter table rules (requires root).
+    """
+    subtype = "IPTABLES_FILTER"
+    # Root requirement
+    try:
+        if os.geteuid() != 0:
+            return make_error_response(
+                TaskType.STATE,
+                subtype,
+                ErrorCode.EXECUTION_FAILURE,
+                "This function requires root privileges.",
+            )
+    except AttributeError:
+        # Systems without geteuid (non-POSIX); attempt and catch below
+        pass
 
-    def serialize_policy(policy: iptc.Policy) -> str:
-        """Serializes a policy to a string so that it is JSON serializable.
-
-        Args:
-            policy (iptc.Policy): Policy object of iptables class.
-
-        Returns:
-            str: The policy as string.
-        """
-        if policy is None:
-            return None
-        if isinstance(policy, str):
-            return policy
-        if hasattr(policy, "name"):
-            return policy.name
-        return str(policy)
-
-    # It requires root privileges to access iptables rules.
-    if os.geteuid() != 0:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": "Error: This function requires root privileges.",
-        }
-
-    result = {
-        "timestamp": datetime.now().isoformat(),
-        "data": {"chains": []},
-        "message": "",
-    }
     try:
         table = iptc.Table(iptc.Table.FILTER)
         table.refresh()
+
+        def serialize_policy(policy: Optional[iptc.Policy]) -> Optional[str]:
+            if policy is None:
+                return None
+            if isinstance(policy, str):  # defensive
+                return policy
+            if hasattr(policy, "name"):
+                return policy.name
+            return str(policy)
+
+        chains_out: List[Dict[str, Any]] = []
         for chain in table.chains:
             chain_data = {
                 "name": chain.name,
@@ -389,104 +359,62 @@ def list_iptables_filter_table() -> dict:
                     "in_interface": rule.in_interface,
                     "out_interface": rule.out_interface,
                     "target": rule.target.name if rule.target else None,
-                    "matches": [match.name for match in rule.matches],
+                    "matches": [m.name for m in rule.matches],
                 }
                 chain_data["rules"].append(rule_dict)
-            result["data"]["chains"].append(chain_data)
-        result["message"] = "Filter table iptables rules retrieved successfully."
+            chains_out.append(chain_data)
+
+        data = {"chains": chains_out}
+        return make_success_response(TaskType.STATE, subtype, data)
+
     except Exception as e:
-        result["message"] = f"Error: {e}"
-    return result
+        return make_error_response(
+            TaskType.STATE, subtype, ErrorCode.EXECUTION_FAILURE, f"iptables error: {e}"
+        )
 
 
-def list_unix_sockets() -> dict:
-    """List all Unix domain sockets from /proc/net/unix.
-
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "total": 10,
-            "sockets": [
-                {
-                    "num": "12345",
-                    "ref_count": "1",
-                    "protocol": "00000000",
-                    "flags": "0x0",
-                    "type": "DGRAM",
-                    "state": "01",
-                    "path": "/var/run/socket"
-                },
-                ...
-            ]
-        },
-        "message": "Unix sockets listed successfully."
-    }
-    """
+def list_unix_sockets() -> Dict[str, Any]:
+    subtype = "UNIX_SOCKETS"
     try:
         with open("/proc/net/unix", "r") as f:
             lines = f.readlines()[1:]
-        sockets = []
+        sockets: List[Dict[str, Any]] = []
         for line in lines:
             fields = line.strip().split()
-            path = fields[6] if len(fields) > 6 else None
-            sockets.append(
-                {
-                    "num": fields[0],
-                    "ref_count": fields[1],
-                    "protocol": fields[2],
-                    "flags": fields[3],
-                    "type": fields[4],
-                    "state": fields[5],
-                    "path": path,
-                }
-            )
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {
-                "total": len(sockets),
-                "sockets": sockets,
-            },
-            "message": "Unix sockets listed successfully.",
-        }
-    except Exception as e:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": f"Error reading /proc/net/unix: {e}",
-        }
-
-
-def list_arp_table() -> dict:
-    """Lists all entries from the ARP table as found in /proc/net/arp and returns them in a structured JSON format.
-
-    Returns:
-        dict: A dictionary with the following structure:
-            {
-                "timestamp": "<ISO8601_TIMESTAMP>",
-                "data": {
-                    "total": <INTEGER_TOTAL_ENTRIES>,
-                    "arp_entries": [
-                        {
-                            "ip_address": "<IPV4_ADDRESS>",
-                            "hw_type": "<HARDWARE_TYPE_CODE>",
-                            "flags": "<ARP_FLAGS>",
-                            "mac_address": "<MAC_ADDRESS>",
-                            "mask": "<SUBNET_MASK>",
-                            "device": "<INTERFACE_NAME>"
-                        },
-                        ...
-                    ]
-                },
-                "message": "<STATUS_MESSAGE>"
+            # /proc/net/unix columns:
+            # Num, RefCount, Protocol, Flags, Type, State, Inode, [Path]
+            entry = {
+                "num": fields[0] if len(fields) > 0 else None,
+                "ref_count": fields[1] if len(fields) > 1 else None,
+                "protocol": fields[2] if len(fields) > 2 else None,
+                "flags": fields[3] if len(fields) > 3 else None,
+                "type": fields[4] if len(fields) > 4 else None,
+                "state": fields[5] if len(fields) > 5 else None,
+                "inode": fields[6] if len(fields) > 6 else None,
+                "path": fields[7] if len(fields) > 7 else None,
             }
-    """
+            sockets.append(entry)
+        data = {"total": len(sockets), "sockets": sockets}
+        return make_success_response(TaskType.STATE, subtype, data)
+    except Exception as e:
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.EXECUTION_FAILURE,
+            f"Error reading /proc/net/unix: {e}",
+        )
+
+
+def list_arp_table() -> Dict[str, Any]:
+    subtype = "ARP_TABLE"
     try:
         with open("/proc/net/arp", "r") as f:
             lines = f.readlines()[1:]
-        entries = []
+        entries: List[Dict[str, Any]] = []
         for line in lines:
             fields = line.strip().split()
+            if len(fields) < 6:
+                continue
             entries.append(
                 {
                     "ip_address": fields[0],
@@ -497,14 +425,12 @@ def list_arp_table() -> dict:
                     "device": fields[5],
                 }
             )
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {"total": len(entries), "arp_entries": entries},
-            "message": "ARP table entries listed successfully.",
-        }
+        data = {"total": len(entries), "arp_entries": entries}
+        return make_success_response(TaskType.STATE, subtype, data)
     except Exception as e:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": f"Error reading /proc/net/arp: {e}",
-        }
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.EXECUTION_FAILURE,
+            f"Error reading /proc/net/arp: {e}",
+        )

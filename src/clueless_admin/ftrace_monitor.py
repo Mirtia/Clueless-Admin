@@ -10,6 +10,13 @@ TRACING_DIR = "/sys/kernel/debug/tracing"
 # expose kernel space information / logs to userspace.
 # It is generally mounted at /sys/kernel/debug.
 
+from clueless_admin.response import (
+    TaskType,
+    ErrorCode,
+    make_success_response,
+    make_error_response,
+)
+
 
 async def call(
     duration: int,
@@ -27,6 +34,32 @@ async def call(
         frequency (int or float): Interval between calls in seconds.
         output_dir (str): Base directory to save the JSON results.
     """
+    # Validate inputs with schema-compliant errors
+    if frequency <= 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "FTRACE_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid frequency: {frequency} (must be > 0)",
+        )
+        raise ValueError(json.dumps(err))
+    if duration <= 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "FTRACE_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid duration: {duration} (must be > 0)",
+        )
+        raise ValueError(json.dumps(err))
+    if max_trace_lines is not None and max_trace_lines < 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "FTRACE_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid max_trace_lines: {max_trace_lines} (must be >= 0 or None)",
+        )
+        raise ValueError(json.dumps(err))
+
     os.makedirs(output_dir, exist_ok=True)
     num_calls = int(duration // frequency)
     if duration % frequency != 0:
@@ -43,22 +76,30 @@ async def call(
             break
 
         try:
-            result = monitor_ftrace()
+            result = monitor_ftrace(max_trace_lines=max_trace_lines)
         except Exception as e:
-            result = {
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-                "data": {},
-                "message": f"Error during monitor_ftrace: {str(e)}",
-            }
+            result = make_error_response(
+                TaskType.STATE,
+                "FTRACE_STATUS",
+                ErrorCode.EXECUTION_FAILURE,
+                f"Unhandled exception during monitor_ftrace: {e}",
+            )
 
         iteration = i
         filename = f"monitor_ftrace_{root_timestamp}_{iteration}.json"
         filepath = os.path.join(run_dir, filename)
         try:
             with open(filepath, "w") as f:
-                json.dump(result, f, indent=2)
+                json.dump(result, f, indent=2, default=str)
         except Exception as e:
-            print(f"Error: Failed to write {filepath}: {e}")
+            io_err = make_error_response(
+                TaskType.STATE,
+                "FTRACE_MONITOR_WRITE",
+                ErrorCode.IO_FAILURE,
+                f"Failed to write {filepath}: {e}",
+            )
+            # Emit to stdout to avoid silent loss
+            print(json.dumps(io_err))
 
         # Sleep until the next scheduled time
         time_to_next = frequency - ((time.time() - start_time) % frequency)
@@ -102,43 +143,51 @@ def monitor_ftrace(max_trace_lines: int = 10) -> dict:
         except Exception:
             return ""
 
-    result = {
-        "timestamp": datetime.now().isoformat(),
-        "data": {},
-        "message": "",
-    }
+    subtype = "FTRACE_STATUS"
 
     if not os.path.isdir(TRACING_DIR):
-        result["data"] = {
-            "ftrace_available": False,
-        }
-        result["message"] = (
-            f"ftrace directory {TRACING_DIR} is not available or not mounted."
+        # ftrace not available / debugfs not mounted
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.IO_FAILURE,
+            f"ftrace directory {TRACING_DIR} is not available or not mounted.",
         )
-        return result
 
-    data = {
-        "ftrace_available": True,
-        "tracing_on": read_file_string(os.path.join(TRACING_DIR, "tracing_on")) == "1",
-        "current_tracer": read_file_string(os.path.join(TRACING_DIR, "current_tracer")),
-        "available_tracers": read_file_lines(
-            os.path.join(TRACING_DIR, "available_tracers")
-        ),
-        "enabled_events": read_file_lines(os.path.join(TRACING_DIR, "set_event")),
-        "set_ftrace_filter": read_file_lines(
-            os.path.join(TRACING_DIR, "set_ftrace_filter")
-        ),
-        "set_ftrace_notrace": read_file_lines(
-            os.path.join(TRACING_DIR, "set_ftrace_notrace")
-        ),
-        "trace_options": read_file_lines(os.path.join(TRACING_DIR, "trace_options")),
-        "trace_entries": [],
-    }
+    try:
+        data = {
+            "ftrace_available": True,
+            "tracing_on": read_file_string(os.path.join(TRACING_DIR, "tracing_on"))
+            == "1",
+            "current_tracer": read_file_string(
+                os.path.join(TRACING_DIR, "current_tracer")
+            ),
+            "available_tracers": read_file_lines(
+                os.path.join(TRACING_DIR, "available_tracers")
+            ),
+            "enabled_events": read_file_lines(os.path.join(TRACING_DIR, "set_event")),
+            "set_ftrace_filter": read_file_lines(
+                os.path.join(TRACING_DIR, "set_ftrace_filter")
+            ),
+            "set_ftrace_notrace": read_file_lines(
+                os.path.join(TRACING_DIR, "set_ftrace_notrace")
+            ),
+            "trace_options": read_file_lines(
+                os.path.join(TRACING_DIR, "trace_options")
+            ),
+            "trace_entries": [],
+        }
 
-    trace_lines = read_file_lines(os.path.join(TRACING_DIR, "trace"))
-    if trace_lines:
-        data["trace_entries"] = trace_lines[-max_trace_lines:]
+        trace_lines = read_file_lines(os.path.join(TRACING_DIR, "trace"))
+        if trace_lines and max_trace_lines is not None and max_trace_lines > 0:
+            data["trace_entries"] = trace_lines[-max_trace_lines:]
 
-    result["data"] = data
-    result["message"] = "ftrace advanced status retrieved successfully."
-    return result
+        return make_success_response(TaskType.STATE, subtype, data)
+
+    except Exception as e:
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.EXECUTION_FAILURE,
+            f"Error collecting ftrace status: {e}",
+        )

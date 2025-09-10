@@ -2,6 +2,14 @@ import json
 import os
 import time
 from datetime import datetime
+from typing import Dict, Any
+
+from clueless_admin.response import (
+    TaskType,
+    ErrorCode,
+    make_success_response,
+    make_error_response,
+)
 
 
 async def call(duration: int, frequency: int, output_dir: str = "data/output"):
@@ -11,6 +19,23 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
 
     Each file is named <monitor_name>_<timestamp>_<iteration>.json
     """
+    if frequency <= 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "PROCESS_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid frequency: {frequency} (must be > 0)",
+        )
+        raise ValueError(json.dumps(err))
+    if duration <= 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "PROCESS_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid duration: {duration} (must be > 0)",
+        )
+        raise ValueError(json.dumps(err))
+
     os.makedirs(output_dir, exist_ok=True)
     num_calls = int(duration // frequency)
     if duration % frequency != 0:
@@ -26,7 +51,7 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
         if elapsed > duration:
             break
 
-        monitors = {
+        monitors: Dict[str, Dict[str, Any]] = {
             "processes": monitor_process(),
             "threads": monitor_threads(),
         }
@@ -37,136 +62,189 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
             filepath = os.path.join(run_dir, filename)
             try:
                 with open(filepath, "w") as f:
-                    json.dump(result, f, indent=2)
+                    json.dump(result, f, indent=2, default=str)
             except Exception as e:
-                print(f"Error: Failed to write {filepath}: {e}")
+                io_err = make_error_response(
+                    TaskType.STATE,
+                    "PROCESS_MONITOR_WRITE",
+                    ErrorCode.IO_FAILURE,
+                    f"Failed to write {filepath}: {e}",
+                )
+                print(json.dumps(io_err))
 
-        # Sleep until next scheduled iteration
         time_to_next = frequency - ((time.time() - start_time) % frequency)
         if time_to_next > 0:
             time.sleep(min(time_to_next, max(0, duration - (time.time() - start_time))))
 
 
-def monitor_process():
-    """
-    Monitor process information in the system.
+def _page_size() -> int:
+    try:
+        return os.sysconf("SC_PAGE_SIZE")
+    except (AttributeError, ValueError):
+        return 4096
 
-    Reads the /proc filesystem to gather information about running processes.
 
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "count": 42,
-            "processes": [
-                {
-                    "pid": 1234,
-                    "name": "bash",
-                    "state": "R",
-                    "cpu_usage": 0.5,
-                    "memory_usage": 204800
-                },
-                ...
-            ]
-        },
-        "message": "Processes monitored successfully."
-    }
+def monitor_process() -> Dict[str, Any]:
     """
+    Enumerate processes via /proc.
+
+    SUCCESS data:
+      {
+        "count": <int>,
+        "page_size": <int>,
+        "processes": [
+          {
+            "pid": <int>,
+            "name": "<str>",
+            "state": "<char>",
+            "rss_pages": <int|null>,
+            "rss_bytes": <int|null>
+          }, ...
+        ]
+      }
+    """
+    subtype = "PROCESSES"
     try:
         processes = []
-        for pid in os.listdir("/proc"):
-            if pid.isdigit():
-                try:
-                    with open(f"/proc/{pid}/stat", "r") as f:
-                        stat = f.read().strip().split()
-                    with open(f"/proc/{pid}/comm", "r") as f:
-                        name = f.read().strip()
+        page_sz = _page_size()
 
-                    process_info = {
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
+                continue
+            try:
+                with open(f"/proc/{pid}/stat", "r") as f:
+                    raw = f.read().strip()
+
+                lpar = raw.rfind("(")
+                rpar = raw.rfind(")")
+                if lpar == -1 or rpar == -1 or rpar < lpar:
+                    parts = raw.split()
+                    state = parts[2] if len(parts) > 2 else "?"
+                    rss_pages = int(parts[23]) if len(parts) > 23 else None
+                    name = "<unknown>"
+                else:
+                    name = raw[lpar + 1 : rpar]
+                    rest = raw[:lpar].split() + raw[rpar + 1 :].split()
+                    state = rest[2] if len(rest) > 2 else "?"
+                    rss_pages = int(rest[23]) if len(rest) > 23 else None
+
+                rss_bytes = rss_pages * page_sz if isinstance(rss_pages, int) else None
+
+                processes.append(
+                    {
                         "pid": int(pid),
                         "name": name,
-                        "state": stat[2],
-                        "cpu_usage": float(stat[13]) + float(stat[14]),  # utime + stime
-                        "memory_usage": int(stat[22]) * 4096,  # RSS in pages
+                        "state": state,
+                        "rss_pages": int(rss_pages) if rss_pages is not None else None,
+                        "rss_bytes": int(rss_bytes) if rss_bytes is not None else None,
                     }
-                    processes.append(process_info)
-                except Exception:
-                    continue
+                )
+            except Exception:
+                continue
 
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {"count": len(processes), "processes": processes},
-            "message": "Processes monitored successfully.",
+        data = {
+            "count": len(processes),
+            "page_size": int(page_sz),
+            "processes": processes,
         }
+        return make_success_response(TaskType.STATE, subtype, data)
 
     except Exception as e:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": f"Error monitoring processes: {str(e)}",
-        }
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.EXECUTION_FAILURE,
+            f"Error monitoring processes: {e}",
+        )
 
 
-def monitor_threads():
+def monitor_threads() -> Dict[str, Any]:
     """
-    Monitor thread information in the system.
+    Enumerate threads via /proc/[pid]/task/*.
 
-    Reads the /proc filesystem to gather information about threads of running processes.
-
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "total_threads": 100,
-            "threads": [
-                {
-                    "tid": 1234,
-                    "pid": 5678,
-                    "name": "bash",
-                    "state": "R",
-                    "cpu_usage": 0.5,
-                    "memory_usage": 204800
-                },
-                ...
-            ]
-        },
-        "message": "Threads monitored successfully."
-    }
+    SUCCESS data:
+      {
+        "total_threads": <int>,
+        "page_size": <int>,
+        "threads": [
+          {
+            "tid": <int>,
+            "pid": <int>,
+            "name": "<str>",
+            "state": "<char>",
+            "rss_pages": <int|null>,
+            "rss_bytes": <int|null>
+          }, ...
+        ]
+      }
     """
+    subtype = "THREADS"
     try:
         threads = []
-        for pid in os.listdir("/proc"):
-            if pid.isdigit():
-                try:
-                    for tid in os.listdir(f"/proc/{pid}/task"):
-                        if tid.isdigit():
-                            with open(f"/proc/{pid}/task/{tid}/stat", "r") as f:
-                                stat = f.read().strip().split()
-                            with open(f"/proc/{pid}/task/{tid}/comm", "r") as f:
-                                name = f.read().strip()
+        page_sz = _page_size()
 
-                            thread_info = {
-                                "tid": int(tid),
-                                "pid": int(pid),
-                                "name": name,
-                                "state": stat[2],
-                                "cpu_usage": float(stat[13])
-                                + float(stat[14]),  # utime + stime
-                                "memory_usage": int(stat[22]) * 4096,  # RSS in pages
-                            }
-                            threads.append(thread_info)
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
+                continue
+            task_dir = f"/proc/{pid}/task"
+            if not os.path.isdir(task_dir):
+                continue
+
+            try:
+                tids = [t for t in os.listdir(task_dir) if t.isdigit()]
+            except Exception:
+                continue
+
+            for tid in tids:
+                try:
+                    with open(f"{task_dir}/{tid}/stat", "r") as f:
+                        raw = f.read().strip()
+
+                    lpar = raw.rfind("(")
+                    rpar = raw.rfind(")")
+                    if lpar == -1 or rpar == -1 or rpar < lpar:
+                        parts = raw.split()
+                        state = parts[2] if len(parts) > 2 else "?"
+                        rss_pages = int(parts[23]) if len(parts) > 23 else None
+                        name = "<unknown>"
+                    else:
+                        name = raw[lpar + 1 : rpar]
+                        rest = raw[:lpar].split() + raw[rpar + 1 :].split()
+                        state = rest[2] if len(rest) > 2 else "?"
+                        rss_pages = int(rest[23]) if len(rest) > 23 else None
+
+                    rss_bytes = (
+                        rss_pages * page_sz if isinstance(rss_pages, int) else None
+                    )
+
+                    threads.append(
+                        {
+                            "tid": int(tid),
+                            "pid": int(pid),
+                            "name": name,
+                            "state": state,
+                            "rss_pages": (
+                                int(rss_pages) if rss_pages is not None else None
+                            ),
+                            "rss_bytes": (
+                                int(rss_bytes) if rss_bytes is not None else None
+                            ),
+                        }
+                    )
                 except Exception:
                     continue
 
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {"total_threads": len(threads), "threads": threads},
-            "message": "Threads monitored successfully.",
+        data = {
+            "total_threads": len(threads),
+            "page_size": int(page_sz),
+            "threads": threads,
         }
+        return make_success_response(TaskType.STATE, subtype, data)
 
     except Exception as e:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": f"Error monitoring threads: {str(e)}",
-        }
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.EXECUTION_FAILURE,
+            f"Error monitoring threads: {e}",
+        )

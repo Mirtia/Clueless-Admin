@@ -3,6 +3,13 @@ import os
 import time
 from datetime import datetime
 
+from clueless_admin.response import (
+    ErrorCode,
+    TaskType,
+    make_error_response,
+    make_success_response,
+)
+
 
 async def call(duration: int, frequency: int, output_dir: str = "data/output"):
     """
@@ -15,6 +22,24 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
         frequency (int or float): Interval between calls in seconds.
         output_dir (str): Base directory to save the JSON results.
     """
+    # Validate inputs
+    if frequency <= 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "MODULES_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid frequency: {frequency} (must be > 0)",
+        )
+        raise ValueError(json.dumps(err))
+    if duration <= 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "MODULES_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid duration: {duration} (must be > 0)",
+        )
+        raise ValueError(json.dumps(err))
+
     os.makedirs(output_dir, exist_ok=True)
     num_calls = int(duration // frequency)
     if duration % frequency != 0:
@@ -37,14 +62,22 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
         }
 
         iteration = i
+        # TODO: Pass iteration number to response.
         for monitor_name, result in monitors.items():
             filename = f"{monitor_name}_{root_timestamp}_{iteration}.json"
             filepath = os.path.join(run_dir, filename)
             try:
                 with open(filepath, "w") as f:
-                    json.dump(result, f, indent=2)
+                    json.dump(result, f, indent=2, default=str)
             except Exception as e:
-                print(f"Failed to write {filepath}: {e}")
+                io_err = make_error_response(
+                    TaskType.STATE,
+                    "MODULES_MONITOR_WRITE",
+                    ErrorCode.IO_FAILURE,
+                    f"Failed to write {filepath}: {e}",
+                )
+                # Best-effort emission to stdout to avoid silent loss
+                print(json.dumps(io_err))
 
         # Sleep until the next scheduled time
         time_to_next = frequency - ((time.time() - start_time) % frequency)
@@ -54,160 +87,145 @@ async def call(duration: int, frequency: int, output_dir: str = "data/output"):
 
 def monitor_loaded_modules() -> dict:
     """
-    List all loaded modules in the system (lsmod or /proc/modules).
-
-    Returns a JSON with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "total_modules": 10,
-            "modules": [
-                {
-                    "name": "module1",
-                    "size": 12345,
-                    "used_by_count": 2,
-                    "used_by": ["module2", "module3"],
-                    "state": "live",
-                    "offset": "0x1234"
-                },
-                ...
-            ]
-        },
-        "message": "Loaded modules retrieved successfully."
-    }
+    List all loaded modules in the system (/proc/modules).
     """
+    subtype = "LOADED_MODULES"
     try:
         modules = []
         with open("/proc/modules", "r") as f:
-            content = f.read().strip()
-            lines = content.split("\n")
-            for line in lines:
-                line = line.strip()
-                columns = line.split()
-                if len(columns) >= 4:
-                    used_by = []
-                    if len(columns) > 3 and columns[3] != "-":
-                        used_by = [
-                            dependecy.strip()
-                            for dependecy in columns[3].rstrip(",").split(",")
-                            if dependecy.strip()
-                        ]
+            for line in f:
+                columns = line.strip().split()
+                if len(columns) < 4:
+                    continue
+                used_by = []
+                if columns[3] != "-":
+                    used_by = [
+                        dep.strip()
+                        for dep in columns[3].rstrip(",").split(",")
+                        if dep.strip()
+                    ]
+                module_info = {
+                    "name": columns[0],
+                    "size": int(columns[1]),
+                    "used_by_count": int(columns[2]),
+                    "used_by": used_by,
+                    # Possible states: "live", "unloading", "dead"
+                    "state": columns[4] if len(columns) > 4 else "",
+                    # Given KASLR, virtual memory address offset.
+                    "offset": columns[5] if len(columns) > 5 else None,
+                }
+                modules.append(module_info)
 
-                    module_info = {
-                        "name": columns[0],
-                        "size": int(columns[1]),
-                        "used_by_count": int(columns[2]),
-                        "used_by": used_by,
-                        # Possible states: "live", "unloading", "dead"
-                        "state": columns[4] if len(columns) > 4 else "",
-                        "offset": columns[5] if len(columns) > 5 else None,
-                    }
-                    modules.append(module_info)
+        data = {"total_modules": len(modules), "modules": modules}
+        return make_success_response(TaskType.STATE, subtype, data)
 
-            total_modules = len(modules)
-
-            return {
-                "timestamp": datetime.now().isoformat(),
-                "data": {
-                    "total_modules": total_modules,
-                    "modules": modules,
-                },
-                "message": "Loaded modules retrieved successfully.",
-            }
+    except FileNotFoundError as e:
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.IO_FAILURE,
+            f"/proc/modules not found: {e}",
+        )
     except Exception as e:
-        return {"timestamp": datetime.now().isoformat(), "data": {}, "message": str(e)}
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.EXECUTION_FAILURE,
+            f"Error reading /proc/modules: {e}",
+        )
 
 
 def monitor_all_loaded_modules() -> dict:
     """
     List all modules in the system, loaded or built (ls /sys/module/).
-    Returns a json with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "total_modules": 10,
-            "modules": [
-                {
-                    "name": "module1",
-                    "path": "/sys/module/module1",
-                    "state": "active"
-                },
-                ...
-            ]
-        },
-        "message": "All modules listed successfully."
-    }
     """
+    subtype = "ALL_MODULES"
     try:
         modules = []
-        for entry in os.listdir("/sys/module/"):
-            module_path = os.path.join("/sys/module/", entry)
-            if os.path.isdir(module_path):
-                refcnt_path = os.path.join(module_path, "refcnt")
-                initstate_path = os.path.join(module_path, "initstate")
-                holders_path = os.path.join(module_path, "holders")
-                # TODO: Test thoroughly with different modules.
-                if os.path.exists(refcnt_path):
-                    state = "loaded"  # Dynamically loaded module
-                elif os.path.exists(initstate_path):
-                    state = "loaded"  # Module with init state
-                elif os.path.exists(holders_path):
-                    state = "loaded"  # Has dependency tracking
-                else:
-                    state = "builtin"
+        base = "/sys/module/"
+        if not os.path.isdir(base):
+            return make_error_response(
+                TaskType.STATE,
+                subtype,
+                ErrorCode.IO_FAILURE,
+                f"{base} is not a directory or not accessible.",
+            )
 
-                module_info = {
-                    "name": entry,
-                    "path": module_path,
-                    "state": state,
-                }
-                modules.append(module_info)
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {
-                "total_modules": len(modules),
-                "modules": modules,
-            },
-            "message": "All modules listed successfully.",
-        }
+        for entry in os.listdir(base):
+            module_path = os.path.join(base, entry)
+            if not os.path.isdir(module_path):
+                continue
+
+            refcnt_path = os.path.join(module_path, "refcnt")
+            initstate_path = os.path.join(module_path, "initstate")
+            holders_path = os.path.join(module_path, "holders")
+            # TODO: Test thoroughly with different modules.
+            if os.path.exists(refcnt_path):
+                state = "loaded"  # Dynamically loaded module
+            elif os.path.exists(initstate_path):
+                state = "loaded"  # Module with init state
+            elif os.path.exists(holders_path):
+                state = "loaded"  # Has dependency tracking
+            else:
+                state = "builtin"
+
+            module_info = {
+                "name": entry,
+                "path": module_path,
+                "state": state,
+            }
+            modules.append(module_info)
+
+        data = {"total_modules": len(modules), "modules": modules}
+        return make_success_response(TaskType.STATE, subtype, data)
+
     except Exception as e:
-        return {"timestamp": datetime.now().isoformat(), "data": {}, "error": str(e)}
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.EXECUTION_FAILURE,
+            f"Error listing /sys/module: {e}",
+        )
 
 
-def list_kernel_symbols():
-    """List kernel symbols (kallsyms).
-    Returns a json with the following structure:
-    {
-        "timestamp": "2025-10-01T12:00:00",
-        "data": {
-            "symbols": [
-                {
-                    "address": "0xffffffff81000000",
-                    "name": "do_syscall_64",
-                    "type": "function"
-                },
-                ...
-            ]
-        },
-        "message": "Kernel symbols listed successfully."
-    }
+def list_kernel_symbols() -> dict:
     """
+    List kernel symbols (/proc/kallsyms). May require permissions depending on kptr_restrict.
+    """
+    subtype = "KERNEL_SYMBOLS"
     try:
         symbols = []
         with open("/proc/kallsyms", "r") as f:
             for line in f:
-                parts = line.split()
-                if len(parts) >= 3:
-                    address = parts[0]
-                    symbol_type = parts[1]
-                    name = " ".join(parts[2:])
-                    symbols.append(
-                        {"address": address, "name": name, "type": symbol_type}
-                    )
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {"symbols": symbols},
-            "message": "Kernel symbols listed successfully.",
-        }
+                parts = line.strip().split()
+                if len(parts) < 3:
+                    continue
+                address = parts[0]
+                symbol_type = parts[1]
+                name = " ".join(parts[2:])
+                symbols.append({"address": address, "name": name, "type": symbol_type})
+
+        data = {"symbols": symbols}
+        return make_success_response(TaskType.STATE, subtype, data)
+
+    except FileNotFoundError as e:
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.IO_FAILURE,
+            f"/proc/kallsyms not found: {e}",
+        )
+    except PermissionError as e:
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.IO_FAILURE,
+            f"Permission denied reading /proc/kallsyms (kptr_restrict?): {e}",
+        )
     except Exception as e:
-        return {"timestamp": datetime.now().isoformat(), "data": {}, "error": str(e)}
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.EXECUTION_FAILURE,
+            f"Error reading /proc/kallsyms: {e}",
+        )

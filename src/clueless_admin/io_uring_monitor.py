@@ -11,6 +11,13 @@ FTRACE_FILTER = os.path.join(FTRACE_PATH, "set_ftrace_filter")
 FTRACE_TRACER = os.path.join(FTRACE_PATH, "current_tracer")
 FTRACE_ON = os.path.join(FTRACE_PATH, "tracing_on")
 
+from clueless_admin.response import (
+    TaskType,
+    ErrorCode,
+    make_success_response,
+    make_error_response,
+)
+
 
 async def call(
     duration: int,
@@ -29,6 +36,40 @@ async def call(
         frequency (int or float): Interval between calls in seconds.
         output_dir (str): Base directory to save the JSON results.
     """
+    # Validate inputs (schema-compliant errors via exception payloads)
+    if frequency <= 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "IO_URING_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid frequency: {frequency} (must be > 0)",
+        )
+        raise ValueError(json.dumps(err))
+    if duration <= 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "IO_URING_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid duration: {duration} (must be > 0)",
+        )
+        raise ValueError(json.dumps(err))
+    if max_events is not None and max_events < 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "IO_URING_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid max_events: {max_events} (must be >= 0 or None)",
+        )
+        raise ValueError(json.dumps(err))
+    if timeout is not None and timeout < 0:
+        err = make_error_response(
+            TaskType.STATE,
+            "IO_URING_MONITOR_CALL",
+            ErrorCode.INVALID_ARGUMENTS,
+            f"Invalid timeout: {timeout} (must be >= 0 or None)",
+        )
+        raise ValueError(json.dumps(err))
+
     os.makedirs(output_dir, exist_ok=True)
     num_calls = int(duration // frequency)
     if duration % frequency != 0:
@@ -47,20 +88,28 @@ async def call(
         try:
             result = monitor_io_uring(max_events, timeout)
         except Exception as e:
-            result = {
-                "timestamp": datetime.utcnow().isoformat() + "Z",
-                "data": {},
-                "message": f"Error during monitor_io_uring: {str(e)}",
-            }
+            result = make_error_response(
+                TaskType.STATE,
+                "IO_URING_EVENTS",
+                ErrorCode.EXECUTION_FAILURE,
+                f"Unhandled exception during monitor_io_uring: {e}",
+            )
 
         iteration = i
         filename = f"monitor_io_uring_{root_timestamp}_{iteration}.json"
         filepath = os.path.join(run_dir, filename)
         try:
             with open(filepath, "w") as f:
-                json.dump(result, f, indent=2)
+                json.dump(result, f, indent=2, default=str)
         except Exception as e:
-            print(f"Error: Failed to write {filepath}: {e}")
+            io_err = make_error_response(
+                TaskType.STATE,
+                "IO_URING_MONITOR_WRITE",
+                ErrorCode.IO_FAILURE,
+                f"Failed to write {filepath}: {e}",
+            )
+            # Best-effort emission to stdout to avoid silent loss
+            print(json.dumps(io_err))
 
         # Sleep until the next scheduled time
         time_to_next = frequency - ((time.time() - start_time) % frequency)
@@ -129,25 +178,28 @@ def monitor_io_uring(max_events=50, timeout=5):
         "message": ...
     }
     """
+    subtype = "IO_URING_EVENTS"
     try:
         if not os.path.exists(FTRACE_PIPE):
-            return {
-                "timestamp": datetime.now().isoformat(),
-                "data": {},
-                "message": (
+            return make_error_response(
+                TaskType.STATE,
+                subtype,
+                ErrorCode.IO_FAILURE,
+                (
                     "ftrace trace_pipe not found. Root privileges and a mounted debugfs "
                     "are required for kernel-level io_uring event monitoring."
                 ),
-            }
+            )
 
         try:
             setup_ftrace_io_uring()
         except Exception as e:
-            return {
-                "timestamp": datetime.now().isoformat(),
-                "data": {},
-                "message": f"Failed to configure ftrace for io_uring monitoring: {str(e)}",
-            }
+            return make_error_response(
+                TaskType.STATE,
+                "IO_URING_FTRACE_SETUP",
+                ErrorCode.EXECUTION_FAILURE,
+                f"Failed to configure ftrace for io_uring monitoring: {e}",
+            )
 
         events = []
         start_time = time.time()
@@ -166,26 +218,19 @@ def monitor_io_uring(max_events=50, timeout=5):
                 if time.time() - start_time > timeout:
                     break
 
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {
-                "total_events": len(events),
-                "events": events,
-            },
-            "message": (
-                f"io_uring events monitored successfully via ftrace. "
-                f"{len(events)} events collected."
-                if events
-                else "No io_uring events detected in ftrace output."
-            ),
+        data = {
+            "total_events": len(events),
+            "events": events,
         }
+        return make_success_response(TaskType.STATE, subtype, data)
 
     except Exception as e:
-        return {
-            "timestamp": datetime.now().isoformat(),
-            "data": {},
-            "message": f"Error during io_uring ftrace monitoring: {str(e)}",
-        }
+        return make_error_response(
+            TaskType.STATE,
+            subtype,
+            ErrorCode.EXECUTION_FAILURE,
+            f"Error during io_uring ftrace monitoring: {e}",
+        )
 
 
 # == Notes ==

@@ -111,7 +111,7 @@ def get_args():
         action="store_true",
         help="Enable kernel modules monitoring.",
     )
-    
+
     parser.add_argument(
         "--kallsyms",
         action="store_true",

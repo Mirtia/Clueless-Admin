@@ -132,5 +132,7 @@ cp examples/io_uring-cp /usr/bin
 
 ## TODO
 
-- [ ] Fix schema
+- [x] Fix schema (https://google.github.io/styleguide/jsoncstyleguide.xml#Property_Ordering_Example)
 - [ ] Update instructions for Ubuntu (apt). The test VMs are Ubuntu based.
+- [x] Test multiple modes.
+- [ ] Test with drakvuf process injection.
