@@ -216,4 +216,4 @@ logs/
 data/output/
 
 # Nuitka artifacts
-nuitka-crash-report.xml
+nuitka-crash-report.xmlW

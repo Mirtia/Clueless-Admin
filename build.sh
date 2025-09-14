@@ -3,40 +3,33 @@
 
 set -e
 
-# Colors
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-echo -e "${BLUE}Building Clueless Administrator with Nuitka${NC}"
+echo "Building Clueless Administrator with Nuitka"
 
 # Check if uv is installed
 if ! command -v uv &> /dev/null; then
-    echo -e "${RED}Error: uv is not installed. Install it with:${NC}"
+    echo "Error: uv is not installed. Install it with:"
     echo "curl -LsSf https://astral.sh/uv/install.sh | sh"
     exit 1
 fi
 
 # Check if ccache is available
 if command -v ccache &> /dev/null; then
-    echo -e "${GREEN}✅ ccache found - builds will be faster!${NC}"
+    echo "ccache found - builds will be faster!"
     # Don't override CC/CXX - let Nuitka handle it
     # Show ccache stats
-    echo -e "${BLUE}ccache stats:${NC}"
+    echo "ccache stats:"
     ccache -s | head -5
 else
-    echo -e "${YELLOW}⚠️  ccache not found. Install with: sudo apt install ccache${NC}"
+    echo "ccache not found. Install with: sudo apt install ccache"
 fi
 
 # Install dependencies with optimizations
-echo -e "${YELLOW}Installing build dependencies...${NC}"
+echo "Installing build dependencies..."
 uv sync --extra build
 
 # Build onefile executable (simpler and faster)
-echo -e "${YELLOW}Building onefile executable...${NC}"
-echo -e "${BLUE}This may take 5-15 minutes. Please be patient.${NC}"
+echo "Building onefile executable..."
+echo "This may take 5-15 minutes. Please be patient."
 
 # Build with optimizations
 uv run python -m nuitka \
@@ -52,22 +45,22 @@ uv run python -m nuitka \
     bin/main.py
 
 if [ $? -eq 0 ]; then
-    echo -e "${GREEN}✅ Build completed successfully!${NC}"
-    echo -e "${BLUE}Executable created: dist/clueless-admin${NC}"
-    echo -e "${BLUE}Test it with: ./dist/clueless-admin --help${NC}"
+    echo "Build completed successfully!"
+    echo "Executable created: dist/clueless-admin"
+    echo "Test it with: ./dist/clueless-admin --help"
     
     # Show ccache stats if available
     if command -v ccache &> /dev/null; then
-        echo -e "${BLUE}Final ccache stats:${NC}"
+        echo "Final ccache stats:"
         ccache -s | head -5
     fi
     
     # Show executable size
     if [ -f "dist/clueless-admin" ]; then
         SIZE=$(du -h dist/clueless-admin | cut -f1)
-        echo -e "${BLUE}Executable size: ${SIZE}${NC}"
+        echo "Executable size: ${SIZE}"
     fi
 else
-    echo -e "${RED}❌ Build failed!${NC}"
+    echo "Build failed!"
     exit 1
 fi
