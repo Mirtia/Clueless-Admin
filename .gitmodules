@@ -1,9 +1,9 @@
 [submodule "yara"]
 	path = yara
-	url = git@github.com:elastic/protections-artifacts.git
+	url = https://github.com/elastic/protections-artifacts.git
 [submodule "tools/chkrootkit"]
 	path = tools/chkrootkit
-	url = git@github.com:Magentron/chkrootkit.git
+	url = https://github.com/Magentron/chkrootkit.git
 [submodule "volatility3"]
 	path = volatility3
-	url = git@github.com:Mirtia/volatility3.git
+	url = https://github.com/Mirtia/volatility3.git
