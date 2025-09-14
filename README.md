@@ -130,6 +130,28 @@ cp examples/io_uring-cp /usr/bin
 **Warning**: Make sure that the python version defined by `uv` matches the python version of your system as uv venv creation was performed using `--system-site-packages`. 
 
 
+## Building Standalone Executables
+
+Build standalone executables using Nuitka and uv with optimizations:
+
+```bash
+# Build all variants (standalone + onefile)
+make build
+
+# Clean build directories
+make clean
+```
+
+**Output**: Executables are created in `dist/` directory:
+- `dist/clueless-admin` - Single file executable
+
+**Requirements**: 
+- Install uv: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+- Install ccache (optional, for faster builds): `sudo apt install ccache`
+- Install patchelf (for standalone builds): `sudo apt install patchelf`
+
+**Requirements**: Install uv first: `curl -LsSf https://astral.sh/uv/install.sh | sh`
+
 ## TODO
 
 - [x] Fix schema (https://google.github.io/styleguide/jsoncstyleguide.xml#Property_Ordering_Example)

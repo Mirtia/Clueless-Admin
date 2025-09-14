@@ -1,15 +1,29 @@
-.PHONY: all format check imports
+.PHONY: all format check imports build clean clean-cache
 
-VENV_ACTIVATE = . .venv/bin/activate
+# Use uv instead of venv
+UV = uv
 
 all: format check imports
 
 format:
-	$(VENV_ACTIVATE) && isort src/ bin/
-	$(VENV_ACTIVATE) && black src/ bin/
+	$(UV) run isort src/ bin/
+	$(UV) run black src/ bin/
 
 check:
-	$(VENV_ACTIVATE) importchecker src/ bin/
+	$(UV) run importchecker src/ bin/
 
 imports: check
 
+# Build targets
+install-deps:
+	$(UV) sync --extra build
+
+build: install-deps
+	./build.sh
+
+clean:
+	rm -rf dist/ build/
+
+clean-cache:
+	ccache -C
+	$(UV) cache clean
