@@ -36,8 +36,8 @@ def get_args():
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="data/output",
-        help="The output directory of the generated JSON monitoring responses.",
+        default="/tmp",
+        help="The output directory of the generated JSON monitoring responses (default: /tmp).",
     )
     # Flag arguments (which monitoring methods are enabled) + method specific arguments (secondary)
     # The module specific arguments are optional, they have default values set.
@@ -118,6 +118,10 @@ def get_args():
         help="[sudo] Enable kallsyms monitoring.",
     )
 
+    parser.add_argument(
+        "--all", action="store_true", help="[sudo] Enable all monitoring options."
+    )
+
     args = parser.parse_args()
     return args
 
@@ -180,12 +184,21 @@ async def main():
         ),
     }
     tasks = []
-    for arg, func in dispatcher.items():
-        if getattr(args, arg, False):
+
+    if args.all:
+        print("Starting all monitoring modules asynchronously...")
+        for arg, func in dispatcher.items():
             print(
                 f"Starting {arg.replace('use_', '').replace('_', ' ').title()} Monitor asynchronously..."
             )
             tasks.append(asyncio.create_task(func()))
+    else:
+        for arg, func in dispatcher.items():
+            if getattr(args, arg, False):
+                print(
+                    f"Starting {arg.replace('use_', '').replace('_', ' ').title()} Monitor asynchronously..."
+                )
+                tasks.append(asyncio.create_task(func()))
 
     await asyncio.gather(*tasks)
 
