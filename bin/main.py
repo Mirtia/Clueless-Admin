@@ -24,14 +24,14 @@ def get_args():
     parser.add_argument(
         "--duration",
         type=int,
-        default=10,
-        help="Duration in seconds for each monitoring task (default: 60 seconds)",
+        default=300,
+        help="Duration in seconds for each monitoring task (default: 300 seconds)",
     )
     parser.add_argument(
         "--frequency",
         type=int,
-        default=1,
-        help="Frequency in seconds to run each monitoring task (default: 1 second)",
+        default=50,
+        help="Frequency in seconds to run each monitoring task (default: 50 second)",
     )
     parser.add_argument(
         "--output-dir",
