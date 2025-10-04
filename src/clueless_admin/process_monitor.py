@@ -84,6 +84,33 @@ def _page_size() -> int:
         return 4096
 
 
+def _get_process_state(state_code: str) -> str:
+    """
+    Convert process state code to literal character.
+
+    State codes from /proc/[pid]/stat:
+    R = Running
+    S = Sleeping (interruptible)
+    D = Sleeping (uninterruptible)
+    Z = Zombie
+    T = Stopped
+    t = Tracing stop
+    X = Dead
+    I = Idle
+    """
+    state_map = {
+        "0": "R",  # Running
+        "1": "S",  # Sleeping (interruptible)
+        "2": "D",  # Sleeping (uninterruptible)
+        "3": "Z",  # Zombie
+        "4": "T",  # Stopped
+        "5": "t",  # Tracing stop
+        "6": "X",  # Dead
+        "7": "I",  # Idle
+    }
+    return state_map.get(state_code, state_code)
+
+
 def monitor_process() -> Dict[str, Any]:
     """
     Enumerate processes via /proc.
@@ -119,16 +146,17 @@ def monitor_process() -> Dict[str, Any]:
                 rpar = raw.rfind(")")
                 if lpar == -1 or rpar == -1 or rpar < lpar:
                     parts = raw.split()
-                    state = parts[2] if len(parts) > 2 else "?"
+                    state_code = parts[2] if len(parts) > 2 else "?"
                     rss_pages = int(parts[23]) if len(parts) > 23 else None
                     name = "<unknown>"
                 else:
                     name = raw[lpar + 1 : rpar]
                     rest = raw[:lpar].split() + raw[rpar + 1 :].split()
-                    state = rest[2] if len(rest) > 2 else "?"
+                    state_code = rest[2] if len(rest) > 2 else "?"
                     rss_pages = int(rest[23]) if len(rest) > 23 else None
 
                 rss_bytes = rss_pages * page_sz if isinstance(rss_pages, int) else None
+                state = _get_process_state(state_code)
 
                 processes.append(
                     {
@@ -143,9 +171,11 @@ def monitor_process() -> Dict[str, Any]:
                 continue
 
         data = {
-            "count": len(processes),
-            "page_size": int(page_sz),
-            "processes": processes,
+            "process_list": {
+                "count": len(processes),
+                "page_size": int(page_sz),
+                "processes": processes,
+            }
         }
         return make_success_response(TaskType.STATE, subtype, data)
 
