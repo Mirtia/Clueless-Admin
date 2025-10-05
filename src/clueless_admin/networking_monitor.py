@@ -257,7 +257,15 @@ def list_tcp_sockets() -> Dict[str, Any]:
         return make_error_response(
             TaskType.STATE, subtype, ErrorCode.EXECUTION_FAILURE, msg
         )
-    data = {"protocol": "tcp", "total": len(sockets), "sockets": sockets}
+    data = {
+        "network_trace": {
+            "tcp_sockets": {
+                "protocol": "tcp",
+                "total": len(sockets),
+                "sockets": sockets,
+            }
+        }
+    }
     return make_success_response(TaskType.STATE, subtype, data)
 
 
@@ -268,7 +276,15 @@ def list_udp_sockets() -> Dict[str, Any]:
         return make_error_response(
             TaskType.STATE, subtype, ErrorCode.EXECUTION_FAILURE, msg
         )
-    data = {"protocol": "udp", "total": len(sockets), "sockets": sockets}
+    data = {
+        "network_trace": {
+            "udp_sockets": {
+                "protocol": "udp",
+                "total": len(sockets),
+                "sockets": sockets,
+            }
+        }
+    }
     return make_success_response(TaskType.STATE, subtype, data)
 
 
